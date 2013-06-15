@@ -15,40 +15,22 @@ extra-source-files:    README.md
 description:
     Pending
 
--- executable czar-server
---     default-language:  Haskell2010
---     main-is:           Main.hs
---     hs-source-dirs:    server/src
+library
+    default-language:  Haskell2010
+    hs-source-dirs:    src
 
---     ghc-options:
---         -threaded
---         -Wall
---         -fwarn-tabs
---         -funbox-strict-fields
---         -with-rtsopts=-N
+    ghc-options:
+        -Wall
+        -fwarn-tabs
+        -funbox-strict-fields
 
---     build-depends:
---         base >= 4 && < 5
---       , aeson >= 0.6
---       , bytestring >= 0.9
---       , containers >= 0.5
---       , case-insensitive >= 1.0
---       , directory >= 1.2
---       , errors >= 1.4
---       -- , http-types >= 0.8
---       , lens >= 3.8
---       -- , monads-tf >= 0.1
---       , snap >= 0.11
---       , snap-core >= 0.9
---       , snap-predicates >= 0.3
---       , snap-server >= 0.9
---       , text >= 0.11
---       -- , transformers >= 0.3
+    build-depends:
+        base >= 4 && < 5
 
-executable czar-agent
+executable czar-server
     default-language:  Haskell2010
     main-is:           Main.hs
-    hs-source-dirs:    agent/src
+    hs-source-dirs:    czar-server
 
     ghc-options:
         -threaded
@@ -58,6 +40,20 @@ executable czar-agent
         -with-rtsopts=-N
 
     build-depends:
+        base >= 4 && < 5
+
+executable czar-agent
+    default-language:  Haskell2010
+    main-is:           Main.hs
+    hs-source-dirs:    czar-agent
+
+    ghc-options:
+        -threaded
+        -Wall
+        -fwarn-tabs
+        -funbox-strict-fields
+
+    build-depends:
         async
       , base >= 4 && < 5
       , bytestring >= 0.9
@@ -65,7 +61,7 @@ executable czar-agent
       , containers >= 0.5
       , directory >= 1.2
       , errors >= 1.4
-      , filepath
+      , filepath >= 1.3
       -- , http-types >= 0.8
       -- , monads-tf >= 0.1
       , hslogger     >= 1.2.1

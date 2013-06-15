@@ -1,8 +1,9 @@
-{-# LANGUAGE BangPatterns      #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE QuasiQuotes       #-}
-{-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE TemplateHaskell   #-}
+{-# LANGUAGE BangPatterns        #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE QuasiQuotes         #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell     #-}
 
 module Main (main) where
 
@@ -26,19 +27,13 @@ import System.Log.Logger
 import System.ShQQ
 import System.ZMQ3.Monadic       hiding (async)
 
+
 import System.Locale (defaultTimeLocale)
 import Data.Time (getZonedTime,getCurrentTime,formatTime)
 
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Text             as T
 import qualified Data.Text.IO          as T
-
-defineOptions "AgentOpts" $ do
-    stringOption  "tcpName"  "server"   ""  "Server for the agent to connect to."
-    stringOption  "ipcName"  "socket"   "ipc://czar.sock"  "Path to the ipc socket."
-    stringOption  "checks"   "checks"   "checks"  "Directory containing a flat list of check descriptions in yaml."
-    stringOption  "hostName" "hostname" ""  "Hostname used to identify the machine."
-    stringsOption "tags"     "tags"     []  "Comma separated list of of subscription tags."
 
 -- Remote execution agent
 -- Push only initially
@@ -58,46 +53,107 @@ defineOptions "AgentOpts" $ do
 -- Use case:
 -- chef run fails, invoke agent
 
+
+-- TODO
+-- agent
+--   multimode connect
+--     reads from ipc
+--     writes to push
+--   multimode push
+--     writes to ipc
+-- server
+--   reads from pull + prints
+
+defineOptions "MainOpts" $ return ()
+
+defineOptions "SendOpts" $ do
+    stringOption  "sendIpc" "socket" "czar.sock" "Path to the ipc socket."
+    stringsOption "sendTags" "tags" [] "Comma separated list of tags to add."
+
+defineOptions "ConnOpts" $ do
+    stringOption  "connIpc" "socket" "czar.sock" "Path to the ipc socket."
+    stringOption  "connServer" "server" "" "Server for the agent to connect to."
+--    stringOption "checks" "checks"   "checks"  "Directory containing a flat list of check descriptions in yaml."
+    stringOption  "connHost" "hostname" "" "Hostname used to identify the machine."
+    stringsOption "connTags" "tags" [] "Comma separated list of tags to always send."
+
 main :: IO ()
-main = runCommand $ \opts _ -> do
-    setLogging
+main = runSubcommand
+    [ cmd "send"    send_
+    , cmd "connect" conn_
+    ]
+  where
+    cmd name f = subcommand name $ \(_ :: MainOpts) x _ -> do
+        setLogging
+        runScript $ f x
 
-    opts' <- defaults opts
-    logInfo $ "Identifying host as " ++ hostName opts'
+    send_ opts = do
+        validateSend opts
+        return ()
 
-    -- check opts'
+    conn_ opts = do
+        ConnOpts{..} <- validateConn opts
+        logInfo $ "Identifying host as " ++ connHost
 
-    logInfo "Starting agent ..."
-    chan <- newChan
-    push <- async $ pushSocket  (tcpName opts') chan
-    rep  <- async $ replySocket (ipcName opts') chan
+        logInfo "Starting agent ..."
+        (push, rep) <- scriptIO $ do
+            chan <- newChan
+            (,) <$> async (pushSocket  connServer chan)
+                <*> async (replySocket connIpc chan)
 
-    logInfo "Loading check configuration ..."
-    traverseFiles putStrLn (checks opts')
+--        logInfo "Loading check configuration ..."
+--        traverseFiles putStrLn (checks opts')
 
-    logInfo "Waiting ..."
-    wait push
+        logInfo "Waiting ..."
+        scriptIO $ wait push
 
-defaults :: AgentOpts -> IO AgentOpts
-defaults opts@AgentOpts{..} = do
-    name <- if null hostName then getHostName else return hostName
-    return $ opts { hostName = name }
+validateSend :: SendOpts -> Script ()
+validateSend SendOpts{..} = do
+    pathExistsM unless sendIpc $ do
+        logError $ "Agent socket not found at " ++ sendIpc
+        throwT "Agent not running."
+
+validateConn :: ConnOpts -> Script ConnOpts
+validateConn opts@ConnOpts{..} = do
+    scriptIO $ doesFileExist connIpc >>= print
+    pathExistsM when connIpc $ do
+        logError $ "Agent socket exists at " ++ connIpc
+        throwT "Agent already running."
+    name <- if null connHost
+            then scriptIO getHostName
+            else return connHost
+    return $ opts { connHost = name }
+
+pathExistsM :: (Bool -> a -> Script ()) -> FilePath -> a -> Script ()
+pathExistsM cond path f = scriptIO (doesFileExist $ strip path) >>= flip cond f
+  where
+    strip = T.unpack . last . T.splitOn "://" . T.pack
+
+-- defaults :: AgentOpts -> IO AgentOpts
+-- defaults opts              = return opts
+-- defaults opts@ConnOpts{..} = do
 
 -- check :: AgentOpts -> IO ()
 -- check AgentOpts{..} = do
 --     when (T.null tcpName)  $ throwT "Missing --server option."
 --     when (T.null hostName) $ throwT "Missing --hostname option."
 
+setLogging :: IO ()
 setLogging = do
     removeAllHandlers
     hd <- streamHandler stderr INFO
     updateGlobalLogger logName (setLevel INFO . setHandlers [formatLog hd])
 
+logName :: String
 logName = "log"
 
-logInfo    = infoM logName
-logWarning = warningM logName
-logError   = errorM logName
+logMsg :: (String -> a -> IO ()) -> a -> Script ()
+logMsg f = scriptIO . f logName
+
+logInfo, logWarning, logError :: String -> Script ()
+logInfo    = logMsg infoM
+logWarning = logMsg warningM
+logError   = logMsg errorM
 
 formatLog :: GenericHandler Handle -> GenericHandler Handle
 formatLog hd = setFormatter hd $ varFormatter [("nid", nid), ("utc", utc)] fmt
