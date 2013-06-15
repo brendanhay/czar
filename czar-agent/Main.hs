@@ -103,7 +103,9 @@ main = runSubcommand
         chan <- newChan
 
         E.finally
-            (runZMQ $ localPull connIpc chan >> remotePush connServer chan)
+            (runZMQ $ do
+                 localPull connIpc chan
+                 remotePush connServer chan)
             (when `pathExistsM` connIpc $ removeFile (stripScheme connIpc))
 
 localPush :: String -> BS.ByteString -> ZMQ z ()
