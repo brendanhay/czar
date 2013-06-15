@@ -15,7 +15,6 @@ import Control.Error
 import Control.Monad
 import Control.Monad.IO.Class
 import Data.List                        (stripPrefix, isPrefixOf)
-import Data.Text                        (Text)
 import Network.BSD               hiding (hostName)
 import Options
 import System.Directory
@@ -25,16 +24,14 @@ import System.Log.Formatter
 import System.Log.Handler               (setFormatter)
 import System.Log.Handler.Simple
 import System.Log.Logger
-import System.ShQQ
 import System.ZMQ3.Monadic
 
 import System.Locale (defaultTimeLocale)
-import Data.Time (getZonedTime,getCurrentTime,formatTime)
+import Data.Time (getCurrentTime, formatTime)
 
 import qualified Control.Exception     as E
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Text             as T
-import qualified Data.Text.IO          as T
 
 -- Remote execution agent
 -- Push only initially
@@ -88,25 +85,33 @@ main = runSubcommand
 
     send_ opts = do
         SendOpts{..} <- runScript $ validateSend opts
+
         logInfo "Connecting to agent ..."
+
         runZMQ $ localPush sendIpc "hello!"
+
         logInfo "Payload sent."
 
     conn_ opts = do
         ConnOpts{..} <- runScript $ validateConn opts
         logInfo $ "Identifying host as " ++ connHost
         logInfo "Starting agent ..."
+
         logInfo "Loading check configuration ..."
         traverseFiles logInfo connChecks
+
         chan <- newChan
+
         E.finally
             (runZMQ $ localPull connIpc chan >> remotePush connServer chan)
             (when `pathExistsM` connIpc $ removeFile (stripScheme connIpc))
 
+localPush :: String -> BS.ByteString -> ZMQ z ()
 localPush addr bs = do
     local <- pushSocket addr
     send local [] bs
 
+localPull :: String -> Chan BS.ByteString -> ZMQ z ()
 localPull addr chan = do
     local <- socket Pull
     bind local addr
@@ -116,6 +121,7 @@ localPull addr chan = do
         logInfo $ "Received " ++ BS.unpack bs ++ " from " ++ addr
         liftIO $ writeChan chan bs
 
+remotePush :: String -> Chan BS.ByteString -> ZMQ z ()
 remotePush addr chan = do
     remote <- pushSocket addr
     forever $ do
@@ -123,6 +129,7 @@ remotePush addr chan = do
 --        send remote [] bs
         logInfo $ "Sent " ++ BS.unpack bs ++ " to " ++ addr
 
+pushSocket :: String -> ZMQ z (Socket z Push)
 pushSocket addr = do
     sock <- socket Push
     connect sock addr
@@ -158,25 +165,6 @@ pathExistsM cond path f =
 
 stripScheme :: String -> String
 stripScheme = T.unpack . last . T.splitOn "://" . T.pack
-
--- -- pushSocket :: MonadIO m => String -> Chan BS.ByteString -> m ()
--- pushSocket addr chan = do
---     push <- socket Push
---     liftIO $ putStrLn $ "connecting to " ++ addr
---     connect push addr
---     liftIO $ putStrLn "connected"
---     forever $ do
---         item <- liftIO $ readChan chan
---         liftIO $ print item
---         send push [] item
-
-replySocket :: MonadIO m => String -> Chan BS.ByteString -> m ()
-replySocket addr chan = runZMQ $ do
-    rep <- socket Rep
-    bind rep addr
-    forever $ do
-        bs <- receive rep
-        liftIO $ writeChan chan bs
 
 setLogging :: IO ()
 setLogging = do
