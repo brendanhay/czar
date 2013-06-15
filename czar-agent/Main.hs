@@ -1,6 +1,7 @@
 {-# LANGUAGE BangPatterns        #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE QuasiQuotes         #-}
+{-# LANGUAGE Rank2Types          #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell     #-}
@@ -9,11 +10,11 @@ module Main (main) where
 
 import Control.Applicative
 import Control.Concurrent
-import Control.Concurrent.Async
+--import Control.Concurrent.Async
 import Control.Error
 import Control.Monad
 import Control.Monad.IO.Class
-import Data.List                        (stripPrefix)
+import Data.List                        (stripPrefix, isPrefixOf)
 import Data.Text                        (Text)
 import Network.BSD               hiding (hostName)
 import Options
@@ -25,12 +26,12 @@ import System.Log.Handler               (setFormatter)
 import System.Log.Handler.Simple
 import System.Log.Logger
 import System.ShQQ
-import System.ZMQ3.Monadic       hiding (async)
-
+import System.ZMQ3.Monadic
 
 import System.Locale (defaultTimeLocale)
 import Data.Time (getZonedTime,getCurrentTime,formatTime)
 
+import qualified Control.Exception     as E
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Text             as T
 import qualified Data.Text.IO          as T
@@ -67,13 +68,13 @@ import qualified Data.Text.IO          as T
 defineOptions "MainOpts" $ return ()
 
 defineOptions "SendOpts" $ do
-    stringOption  "sendIpc" "socket" "czar.sock" "Path to the ipc socket."
+    stringOption  "sendIpc" "socket" "ipc://czar.sock" "Path to the ipc socket."
     stringsOption "sendTags" "tags" [] "Comma separated list of tags to add."
 
 defineOptions "ConnOpts" $ do
-    stringOption  "connIpc" "socket" "czar.sock" "Path to the ipc socket."
+    stringOption  "connIpc" "socket" "ipc://czar.sock" "Path to the ipc socket."
     stringOption  "connServer" "server" "" "Server for the agent to connect to."
---    stringOption "checks" "checks"   "checks"  "Directory containing a flat list of check descriptions in yaml."
+    stringOption  "connChecks" "checks" "checks" "Directory containing a flat list of check descriptions in yaml."
     stringOption  "connHost" "hostname" "" "Hostname used to identify the machine."
     stringsOption "connTags" "tags" [] "Comma separated list of tags to always send."
 
@@ -85,38 +86,73 @@ main = runSubcommand
   where
     cmd name f = subcommand name $ \(_ :: MainOpts) x _ -> do
         setLogging
-        runScript $ f x
+        f x
 
     send_ opts = do
-        validateSend opts
-        return ()
+        SendOpts{..} <- runScript $ validateSend opts
+
+        logInfo "Connecting to agent ..."
+
+        runZMQ $ localPush sendIpc "hello!"
+
+        logInfo "Payload sent."
 
     conn_ opts = do
-        ConnOpts{..} <- validateConn opts
+        ConnOpts{..} <- runScript $ validateConn opts
+
         logInfo $ "Identifying host as " ++ connHost
-
         logInfo "Starting agent ..."
-        (push, rep) <- scriptIO $ do
-            chan <- newChan
-            (,) <$> async (pushSocket  connServer chan)
-                <*> async (replySocket connIpc chan)
 
---        logInfo "Loading check configuration ..."
---        traverseFiles putStrLn (checks opts')
+        logInfo "Loading check configuration ..."
+        traverseFiles logInfo connChecks
 
-        logInfo "Waiting ..."
-        scriptIO $ wait push
+        chan <- newChan
 
-validateSend :: SendOpts -> Script ()
-validateSend SendOpts{..} = do
-    pathExistsM unless sendIpc $ do
+        E.finally
+            (runZMQ $ do
+                localPull connIpc chan
+                remotePush connServer chan)
+            (when `pathExistsM` connIpc $
+                removeFile $ stripScheme connIpc)
+
+localPush addr bs = do
+    local <- pushSocket addr
+    send local [] bs
+
+localPull addr chan = do
+    local <- socket Pull
+    bind local addr
+    logInfo $ "Listening on " ++ addr
+    async . forever $ do
+        bs <- receive local
+        logInfo $ "Received " ++ BS.unpack bs ++ " from " ++ addr
+        liftIO $ writeChan chan bs
+
+remotePush addr chan = do
+    remote <- pushSocket addr
+    forever $ do
+        bs <- liftIO $ readChan chan
+--        send remote [] bs
+        logInfo $ "Sent " ++ BS.unpack bs ++ " to " ++ addr
+
+pushSocket addr = do
+    sock <- socket Push
+    connect sock addr
+    logInfo $ "Connected to " ++ addr
+    return sock
+
+validateSend :: SendOpts -> Script SendOpts
+validateSend opts@SendOpts{..} = do
+    validateIpc sendIpc
+    unless `pathExistsM` sendIpc $ do
         logError $ "Agent socket not found at " ++ sendIpc
         throwT "Agent not running."
+    return opts
 
 validateConn :: ConnOpts -> Script ConnOpts
 validateConn opts@ConnOpts{..} = do
-    scriptIO $ doesFileExist connIpc >>= print
-    pathExistsM when connIpc $ do
+    validateIpc connIpc
+    when `pathExistsM` connIpc $ do
         logError $ "Agent socket exists at " ++ connIpc
         throwT "Agent already running."
     name <- if null connHost
@@ -124,19 +160,35 @@ validateConn opts@ConnOpts{..} = do
             else return connHost
     return $ opts { connHost = name }
 
-pathExistsM :: (Bool -> a -> Script ()) -> FilePath -> a -> Script ()
-pathExistsM cond path f = scriptIO (doesFileExist $ strip path) >>= flip cond f
-  where
-    strip = T.unpack . last . T.splitOn "://" . T.pack
+validateIpc :: String -> Script ()
+validateIpc str = unless ("ipc://" `isPrefixOf` str) $ do
+    throwT $ str ++ " does not start with the required ipc:// scheme"
 
--- defaults :: AgentOpts -> IO AgentOpts
--- defaults opts              = return opts
--- defaults opts@ConnOpts{..} = do
+pathExistsM :: MonadIO m => (Bool -> a -> m ()) -> FilePath -> a -> m ()
+pathExistsM cond path f =
+    liftIO (doesFileExist $ stripScheme path) >>= flip cond f
 
--- check :: AgentOpts -> IO ()
--- check AgentOpts{..} = do
---     when (T.null tcpName)  $ throwT "Missing --server option."
---     when (T.null hostName) $ throwT "Missing --hostname option."
+stripScheme :: String -> String
+stripScheme = T.unpack . last . T.splitOn "://" . T.pack
+
+-- -- pushSocket :: MonadIO m => String -> Chan BS.ByteString -> m ()
+-- pushSocket addr chan = do
+--     push <- socket Push
+--     liftIO $ putStrLn $ "connecting to " ++ addr
+--     connect push addr
+--     liftIO $ putStrLn "connected"
+--     forever $ do
+--         item <- liftIO $ readChan chan
+--         liftIO $ print item
+--         send push [] item
+
+replySocket :: MonadIO m => String -> Chan BS.ByteString -> m ()
+replySocket addr chan = runZMQ $ do
+    rep <- socket Rep
+    bind rep addr
+    forever $ do
+        bs <- receive rep
+        liftIO $ writeChan chan bs
 
 setLogging :: IO ()
 setLogging = do
@@ -147,10 +199,10 @@ setLogging = do
 logName :: String
 logName = "log"
 
-logMsg :: (String -> a -> IO ()) -> a -> Script ()
-logMsg f = scriptIO . f logName
+logMsg :: MonadIO m => (String -> a -> IO ()) -> a -> m ()
+logMsg f = liftIO . f logName
 
-logInfo, logWarning, logError :: String -> Script ()
+logInfo, logWarning, logError :: MonadIO m => String -> m ()
 logInfo    = logMsg infoM
 logWarning = logMsg warningM
 logError   = logMsg errorM
@@ -161,22 +213,6 @@ formatLog hd = setFormatter hd $ varFormatter [("nid", nid), ("utc", utc)] fmt
     fmt = "[$utc $pid:$nid $prio] $msg"
     utc = formatTime defaultTimeLocale "%F %X %Z" <$> getCurrentTime
     nid = fromMaybe "0" . stripPrefix "ThreadId " . show <$> myThreadId
-
-pushSocket :: MonadIO m => String -> Chan BS.ByteString -> m ()
-pushSocket addr chan = runZMQ $ do
-    push <- socket Push
-    connect push addr
-    forever $ do
-        item <- liftIO $ readChan chan
-        send push [] item
-
-replySocket :: MonadIO m => String -> Chan BS.ByteString -> m ()
-replySocket addr chan = runZMQ $ do
-    rep <- socket Rep
-    bind rep addr
-    forever $ do
-        bs <- receive rep
-        liftIO $ writeChan chan bs
 
 traverseFiles :: (FilePath -> IO ()) -> FilePath -> IO ()
 traverseFiles f = foldFiles (\_ n -> f n) ()
