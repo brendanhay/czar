@@ -84,36 +84,24 @@ main = runSubcommand
     , cmd "connect" conn_
     ]
   where
-    cmd name f = subcommand name $ \(_ :: MainOpts) x _ -> do
-        setLogging
-        f x
+    cmd name f = subcommand name $ \(_ :: MainOpts) x _ -> setLogging >> f x
 
     send_ opts = do
         SendOpts{..} <- runScript $ validateSend opts
-
         logInfo "Connecting to agent ..."
-
         runZMQ $ localPush sendIpc "hello!"
-
         logInfo "Payload sent."
 
     conn_ opts = do
         ConnOpts{..} <- runScript $ validateConn opts
-
         logInfo $ "Identifying host as " ++ connHost
         logInfo "Starting agent ..."
-
         logInfo "Loading check configuration ..."
         traverseFiles logInfo connChecks
-
         chan <- newChan
-
         E.finally
-            (runZMQ $ do
-                localPull connIpc chan
-                remotePush connServer chan)
-            (when `pathExistsM` connIpc $
-                removeFile $ stripScheme connIpc)
+            (runZMQ $ localPull connIpc chan >> remotePush connServer chan)
+            (when `pathExistsM` connIpc $ removeFile (stripScheme connIpc))
 
 localPush addr bs = do
     local <- pushSocket addr
