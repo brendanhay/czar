@@ -1,0 +1,80 @@
+name:                  czar
+version:               0.1.0
+synopsis:              Pending
+license:               OtherLicense
+license-file:          LICENSE
+author:                Brendan Hay
+maintainer:            Brendan Hay <brendan.g.hay@gmail.com>
+copyright:             Copyright (c) 2013 Brendan Hay
+stability:             Experimental
+category:              Monitoring
+build-type:            Simple
+cabal-version:         >= 1.10
+extra-source-files:    README.md
+
+description:
+    Pending
+
+-- executable czar-server
+--     default-language:  Haskell2010
+--     main-is:           Main.hs
+--     hs-source-dirs:    server/src
+
+--     ghc-options:
+--         -threaded
+--         -Wall
+--         -fwarn-tabs
+--         -funbox-strict-fields
+--         -with-rtsopts=-N
+
+--     build-depends:
+--         base >= 4 && < 5
+--       , aeson >= 0.6
+--       , bytestring >= 0.9
+--       , containers >= 0.5
+--       , case-insensitive >= 1.0
+--       , directory >= 1.2
+--       , errors >= 1.4
+--       -- , http-types >= 0.8
+--       , lens >= 3.8
+--       -- , monads-tf >= 0.1
+--       , snap >= 0.11
+--       , snap-core >= 0.9
+--       , snap-predicates >= 0.3
+--       , snap-server >= 0.9
+--       , text >= 0.11
+--       -- , transformers >= 0.3
+
+executable czar-agent
+    default-language:  Haskell2010
+    main-is:           Main.hs
+    hs-source-dirs:    agent/src
+
+    ghc-options:
+        -threaded
+        -Wall
+        -fwarn-tabs
+        -funbox-strict-fields
+        -with-rtsopts=-N
+
+    build-depends:
+        async
+      , base >= 4 && < 5
+      , bytestring >= 0.9
+      , configurator
+      , containers >= 0.5
+      , directory >= 1.2
+      , errors >= 1.4
+      , filepath
+      -- , http-types >= 0.8
+      -- , monads-tf >= 0.1
+      , hslogger     >= 1.2.1
+      , network
+      , old-locale
+      , options      >= 0.1
+      , shqq         >= 0.1
+      , stm
+      , text >= 0.11
+      , time
+      , zeromq3-haskell
+      , transformers >= 0.3
