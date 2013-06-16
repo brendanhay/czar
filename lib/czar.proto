@@ -19,12 +19,16 @@ message Attribute {
   required string value = 2;
 }
 
+message Tag {
+  required string name = 1;
+}
+
 message Event {
   required int64 time = 1;
   required string host = 2;
   required string key = 3;
   optional string description = 4;
-  repeated string tags = 5;
+  repeated Tag tags = 5;
   repeated Metric metrics = 6;
   repeated Attribute attributes = 7;
 }

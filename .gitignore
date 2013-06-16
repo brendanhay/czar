@@ -33,4 +33,4 @@ tags
 Procfile
 
 # Protobufs
-src/Czar/Protocol*
+Protocol*

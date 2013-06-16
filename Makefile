@@ -10,7 +10,7 @@ clean:
 	-rm -rf .conf bin/czar-* src/Czar/Protocol*
 
 lint:
-	hlint src
+	hlint czar-agent czar-server
 
 .conf:
 	cabal-dev configure && touch .conf
@@ -19,4 +19,4 @@ bin/%:
 	@mkdir -p bin && ln -fs ../dist/build/$*/$* $@
 
 src/Czar/Protocol.hs: lib/czar.proto
-	hprotoc -I lib -p Czar -d src -v $<
+	hprotoc -I lib -p Czar -d czar -v $<

@@ -10,11 +10,9 @@ module Main (main) where
 
 import Control.Applicative
 import Control.Concurrent
---import Control.Concurrent.Async
 import Control.Error
 import Control.Monad
 import Control.Monad.IO.Class
-import Czar.Agent.Check
 import Czar.Agent.Config
 import Data.Configurator
 import Data.List                        (stripPrefix, isPrefixOf)
@@ -32,6 +30,7 @@ import System.ZMQ3.Monadic
 import System.Locale (defaultTimeLocale)
 import Data.Time (getCurrentTime, formatTime)
 
+import qualified Control.Concurrent.Async as A
 import qualified Control.Exception     as E
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Text             as T
@@ -75,8 +74,9 @@ defineOptions "ConnOpts" $ do
     stringOption  "connIpc" "socket" "ipc://czar.sock" "Path to the ipc socket."
     stringOption  "connServer" "server" "" "Server for the agent to connect to."
     stringOption  "connHost" "hostname" "" "Hostname used to identify the machine."
+    integerOption "connSplay" "splay" 50 "Given a list of checks, differentiate their start times by this number of milliseconds."
     stringsOption "connTags" "tags" [] "Comma separated list of tags to always send."
-    stringsOption  "connChecks" "checks" ["etc/czar/checks.list.d"] "Paths to files or directories containing check configuration."
+    stringsOption "connChecks" "checks" ["etc/czar/checks.list.d"] "Paths to files or directories containing check configuration."
 
 main :: IO ()
 main = runSubcommand
@@ -100,15 +100,20 @@ main = runSubcommand
         logInfo $ "Identifying host as " ++ connHost
         logInfo "Starting agent ..."
 
-        mapM_ (logInfo . ("Loaded checks from " ++)) connChecks
+        mapM_ (logInfo . ("Loading checks from " ++)) connChecks
         (cfg, tid) <- loadConfig connChecks
 
-        gs <- groups cfg
-        mapM_ (logInfo . T.unpack . (\g -> "Added " <> g <> " check")) gs
+        checks <- mapM (parseCheck cfg) =<< getCheckNames cfg
+        mapM_ (logInfo . T.unpack . (\c -> "Added " <> chkName c <> " check")) checks
 
-        mapM (`check` config) gs
+        _ <- A.async . forever $ do
+            threadDelay 1000000
+            putStrLn "."
 
-        chan <- newChan
+        asyncs <- zipWithM forkCheck checks . scanl1 (+) $ repeat connSplay
+        mapM_ A.link asyncs
+
+        chan   <- newChan
 
         E.finally
             (runZMQ $ do
