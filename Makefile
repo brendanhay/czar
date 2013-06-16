@@ -1,13 +1,13 @@
 all: build lint
 
-build: .conf
+build: .conf src/Czar/Protocol.hs
 	cabal-dev build && $(MAKE) bin/czar-server bin/czar-agent
 
 install:
 	cabal-dev install
 
 clean:
-	-rm -f .conf bin/czar-*
+	-rm -rf .conf bin/czar-* src/Czar/Protocol*
 
 lint:
 	hlint src
@@ -17,3 +17,6 @@ lint:
 
 bin/%:
 	@mkdir -p bin && ln -fs ../dist/build/$*/$* $@
+
+src/Czar/Protocol.hs: lib/czar.proto
+	hprotoc -I lib -p Czar -d src -v $<

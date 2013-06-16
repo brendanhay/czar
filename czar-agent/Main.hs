@@ -14,11 +14,14 @@ import Control.Concurrent
 import Control.Error
 import Control.Monad
 import Control.Monad.IO.Class
+import Czar.Agent.Check
+import Czar.Agent.Config
+import Data.Configurator
 import Data.List                        (stripPrefix, isPrefixOf)
+import Data.Monoid
 import Network.BSD               hiding (hostName)
 import Options
 import System.Directory
-import System.FilePath
 import System.IO
 import System.Log.Formatter
 import System.Log.Handler               (setFormatter)
@@ -71,9 +74,9 @@ defineOptions "SendOpts" $ do
 defineOptions "ConnOpts" $ do
     stringOption  "connIpc" "socket" "ipc://czar.sock" "Path to the ipc socket."
     stringOption  "connServer" "server" "" "Server for the agent to connect to."
-    stringOption  "connChecks" "checks" "checks" "Directory containing a flat list of check descriptions in yaml."
     stringOption  "connHost" "hostname" "" "Hostname used to identify the machine."
     stringsOption "connTags" "tags" [] "Comma separated list of tags to always send."
+    stringsOption  "connChecks" "checks" ["etc/czar/checks.list.d"] "Paths to files or directories containing check configuration."
 
 main :: IO ()
 main = runSubcommand
@@ -97,8 +100,13 @@ main = runSubcommand
         logInfo $ "Identifying host as " ++ connHost
         logInfo "Starting agent ..."
 
-        logInfo "Loading check configuration ..."
-        traverseFiles logInfo connChecks
+        mapM_ (logInfo . ("Loaded checks from " ++)) connChecks
+        (cfg, tid) <- loadConfig connChecks
+
+        gs <- groups cfg
+        mapM_ (logInfo . T.unpack . (\g -> "Added " <> g <> " check")) gs
+
+        mapM (`check` config) gs
 
         chan <- newChan
 
@@ -191,27 +199,3 @@ formatLog hd = setFormatter hd $ varFormatter [("nid", nid), ("utc", utc)] fmt
     fmt = "[$utc $pid:$nid $prio] $msg"
     utc = formatTime defaultTimeLocale "%F %X %Z" <$> getCurrentTime
     nid = fromMaybe "0" . stripPrefix "ThreadId " . show <$> myThreadId
-
-traverseFiles :: (FilePath -> IO ()) -> FilePath -> IO ()
-traverseFiles f = foldFiles (\_ n -> f n) ()
-
-foldFiles :: (a -> FilePath -> IO a) -> a -> FilePath -> IO a
-foldFiles f !a !d = do
-    c <- check d
-    case c of
-        (True, True, False) -> f a d
-        (True, False, True) -> foldDir
-        _                   -> return a
-  where
-    foldDir = do
-        xs <- map (d </>) . filter dots <$> getDirectoryContents d
-        foldM (foldFiles f) a xs
-
-    dots "."  = False
-    dots ".." = False
-    dots _    = True
-
-    check x = (,,)
-        <$> (readable <$> getPermissions x)
-        <*> doesFileExist x
-        <*> doesDirectoryExist x

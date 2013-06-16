@@ -31,3 +31,6 @@ tags
 # Keiretsu
 .env
 Procfile
+
+# Protobufs
+src/Czar/Protocol*
