@@ -37,8 +37,8 @@ extension = ".cfg"
 command :: Text
 command = ".command"
 
-loadConfig :: [FilePath] -> IO (Config, ThreadId)
-loadConfig paths = mapM expand paths >>= autoReload autoConfig . concat
+loadConfig :: [FilePath] -> IO Config
+loadConfig paths = mapM expand paths >>= load . concat
   where
     expand p = do
         a <- attrs p
@@ -58,8 +58,10 @@ loadConfig paths = mapM expand paths >>= autoReload autoConfig . concat
         | extension `isSuffixOf` p = True
         | otherwise                = False
 
-getCheckNames :: Config -> IO [Name]
-getCheckNames cfg = filter (command `T.isSuffixOf`) . H.keys <$> getMap cfg
+parseChecks :: Config -> IO [Check]
+parseChecks cfg = names >>= mapM (parseCheck cfg)
+  where
+    names = filter (command `T.isSuffixOf`) . H.keys <$> getMap cfg
 
 parseCheck :: Config -> Name -> IO Check
 parseCheck cfg name = Check key
@@ -82,10 +84,13 @@ parseCheck cfg name = Check key
         (error $ "Invalid check command: " ++ T.unpack name)
         (T.stripSuffix command name)
 
-forkCheck :: Check -> Integer -> IO (Async ())
-forkCheck Check{..} n = async $ threadDelay splay >> forever run
+forkChecks :: Integer -> [Check] -> IO ()
+forkChecks splay cs = zipWithM fork cs steps >>= mapM_ link
   where
-    splay = fromIntegral n * 10000
-    run   = do
-        threadDelay $ chkInterval * 1000000
-        putStrLn . T.unpack $ "Running " <> chkName <> ":" <> chkCommand
+    fork Check{..} n = async $ do
+        threadDelay n
+        forever $ do
+            threadDelay $ chkInterval * 1000000
+            putStrLn . T.unpack $ "Running " <> chkName <> ":" <> chkCommand
+
+    steps = scanl1 (+) . repeat $ fromIntegral splay * 10000
