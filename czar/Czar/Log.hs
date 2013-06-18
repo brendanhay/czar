@@ -1,11 +1,11 @@
-{-# LANGUAGE NoMonomorphismRestriction #-}
-{-# LANGUAGE OverloadedStrings         #-}
+{-# LANGUAGE OverloadedStrings #-}
 
-module Czar.Agent.Log (
-      logInfo
+module Czar.Log (
+      setLogging
+    , logInfoM
+    , logInfo
     , logWarning
     , logError
-    , setLogging
     ) where
 
 import Control.Applicative
@@ -20,24 +20,29 @@ import System.Log.Formatter
 import System.Log.Handler        (setFormatter)
 import System.Log.Handler.Simple
 import System.Log.Logger
-import Text.Printf
 
-setLogging :: IO ()
-setLogging = do
+setLogging :: MonadIO m => m ()
+setLogging = liftIO $ do
     removeAllHandlers
     hd <- streamHandler stderr INFO
     updateGlobalLogger logName (setLevel INFO . setHandlers [formatLog hd])
 
--- logInfo, logWarning, logError :: MonadIO m => String -> String -> m ()
-logInfo    = logMsg infoM . printf
-logWarning = logMsg warningM . printf
-logError   = logMsg errorM . printf
+logInfoM :: MonadIO m => (a -> String) -> [a] -> m ()
+logInfoM = withPrefix logInfo
+
+logInfo, logWarning, logError :: MonadIO m => String -> m ()
+logInfo    = logMsg infoM
+logWarning = logMsg warningM
+logError   = logMsg errorM
 
 logName :: String
 logName = "log"
 
 logMsg :: MonadIO m => (String -> a -> IO ()) -> a -> m ()
 logMsg f = liftIO . f logName
+
+withPrefix :: MonadIO m => (String -> m ()) -> (a -> String) -> [a] -> m ()
+withPrefix f g = mapM_ (f . g)
 
 formatLog :: GenericHandler Handle -> GenericHandler Handle
 formatLog hd = setFormatter hd $ varFormatter [("nid", nid), ("utc", utc)] fmt

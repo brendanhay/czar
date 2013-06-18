@@ -6,22 +6,26 @@ module Czar.Agent.Config where
 
 import Prelude hiding (lookup)
 
-import Control.Applicative
+import Control.Applicative      ((<$>), (<*>))
 import Control.Concurrent
 import Control.Concurrent.Async
+import Control.Concurrent.STM
 import Control.Monad
+import Czar.Log
 import Data.Configurator
 import Data.Configurator.Types
-import Data.List               (isSuffixOf)
+import Data.List                (isSuffixOf)
 import Data.Maybe
 import Data.Monoid
-import Data.Text               (Text)
+import Data.Text                (Text)
 import Data.Time.Clock.POSIX
 import System.Directory
 import System.FilePath
 
-import qualified Data.HashMap.Lazy as H
-import qualified Data.Text         as T
+import qualified Data.ByteString.Char8 as BS
+import qualified Data.HashMap.Lazy     as H
+import qualified Data.Text             as T
+import qualified Data.Text.Encoding    as T
 
 data Check = Check
     { chkName     :: Text
@@ -84,13 +88,13 @@ parseCheck cfg name = Check key
         (error $ "Invalid check command: " ++ T.unpack name)
         (T.stripSuffix command name)
 
-forkChecks :: Integer -> [Check] -> IO ()
-forkChecks splay cs = zipWithM fork cs steps >>= mapM_ link
+forkChecks :: Integer -> TChan BS.ByteString -> [Check] -> IO ()
+forkChecks splay chan cs = zipWithM fork cs steps >>= mapM_ link
   where
     fork Check{..} n = async $ do
         threadDelay n
         forever $ do
             threadDelay $ chkInterval * 1000000
-            putStrLn . T.unpack $ "Running " <> chkName <> ":" <> chkCommand
+            atomically . writeTChan chan . T.encodeUtf8 $ "Running " <> chkName <> ":" <> chkCommand
 
     steps = scanl1 (+) . repeat $ fromIntegral splay * 10000

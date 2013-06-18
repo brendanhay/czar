@@ -5,106 +5,92 @@
 
 module Main (main) where
 
+import Control.Concurrent.Async
+import Control.Concurrent.STM
 import Control.Error
+import Control.Monad
+import Control.Monad.IO.Class
 import Czar.Agent.Config
-import Czar.Agent.Log
-import Czar.Agent.Socket
-import Data.Monoid
-import Network.BSD         hiding (hostName)
+import Czar.Log
+import Czar.Socket
+import Network.BSD              hiding (hostName)
 import Options
-import System.ZMQ3.Monadic
+import System.ZMQ3.Monadic      hiding (async)
 
-import qualified Data.Text as T
-
--- Remote execution agent
--- Push only initially
-
-  -- Configuration is a flat-list of yaml files in a directory
-  -- Each check gets it's own thread
-
--- Push socket to server
-
--- Local ipc socket
--- remove socket file on exit if this process was the creator
-
--- 2 mode agent, one is connect, other is push
--- use ipc socket to connect to running agent and specify
--- payload via command line flags
-
--- Use case:
--- chef run fails, invoke agent
-
-
--- TODO
--- agent
---   multimode connect
---     reads from ipc
---     writes to push
---   multimode push
---     writes to ipc
--- server
---   reads from pull + prints
+import qualified Data.ByteString.Char8 as BS
+import qualified Data.Text             as T
 
 defineOptions "MainOpts" $ return ()
 
 defineOptions "SendOpts" $ do
-    stringOption  "sendSocket" "socket" "ipc://czar.sock" "Path to the ipc socket."
-    stringsOption "sendTags" "tags" [] "Comma separated list of tags to add."
+    stringOption  "sendAgent" "agent" "ipc://czar-agent.sock" "Path to the ipc socket."
+    stringsOption "sendTags"   "tags"  [] "Comma separated list of tags to add."
 
 defineOptions "ConnOpts" $ do
-    stringOption  "connSocket" "socket" "ipc://czar.sock" "Path to the ipc socket."
-    stringOption  "connServer" "server" "" "Server for the agent to connect to."
-    stringOption  "connHost" "hostname" "" "Hostname used to identify the machine."
-    integerOption "connSplay" "splay" 50 "Given a list of checks, differentiate their start times by this number of milliseconds."
-    stringsOption "connTags" "tags" [] "Comma separated list of tags to always send."
-    stringsOption "connChecks" "checks" ["etc/czar/checks.list.d"] "Paths to files or directories containing check configuration."
+    stringOption  "connListen" "listen"   "ipc://czar-agent.sock" "Path to the ipc socket."
+    stringOption  "connPublish" "server"   "tcp://localhost:5555" "Server for the agent to connect to."
+    stringOption  "connHost"   "hostname" "" "Hostname used to identify the machine."
+    integerOption "connSplay"  "splay"    50 "Given a list of checks, differentiate their start times by this number of milliseconds."
+    stringsOption "connTags"   "tags"     [] "Comma separated list of tags to always send."
+    stringsOption "connChecks" "checks"   ["etc/czar/checks.list.d"] "Paths to files or directories containing check configuration."
 
 main :: IO ()
 main = runSubcommand
     [ cmd "send"    send_
-    , cmd "connect" conn_
+    , cmd "connect" connect_
     ]
   where
-    cmd name f = subcommand name $ \(_ :: MainOpts) x _ -> setLogging >> f x
+    cmd name f = subcommand name $
+        \(_ :: MainOpts) x _ -> runScript $ setLogging >> f x
 
-    send_ opts = do
-        SendOpts{..} <- runScript $ validateSend opts
+send_ :: SendOpts -> Script ()
+send_ SendOpts{..} = do
+    uri <- parseUri sendAgent
 
-        logInfo "Connecting to agent ..."
+    logInfo "Connecting to agent ..."
 
-        runZMQ $ writeSocket sendSocket "hello!"
+    scriptIO $ runZMQ $ do
+        sock <- agentNotify uri
+        send sock [] "Hello!"
+        logInfo $ "Payload sent to " ++ show uri
 
-        logInfo "Payload sent."
+    logInfo "OK"
 
-    conn_ opts = do
-        ConnOpts{..} <- runScript $ validateConn opts
-        logInfo $ "Identifying host as " ++ connHost
-        logInfo "Starting agent ..."
+connect_ :: ConnOpts -> Script ()
+connect_ ConnOpts{..} = do
+    host <- if null connHost then liftIO getHostName else return connHost
 
-        mapM_ (logInfo . ("Loading checks from " ++)) connChecks
-        cfg <- loadConfig connChecks
+    luri <- parseUri connListen
+    puri <- parseUri connPublish
 
-        checks <- parseChecks cfg
-        mapM_ (logInfo . T.unpack . (\c -> "Added " <> chkName c <> " check")) checks
-        forkChecks connSplay checks
+    logInfo $ "Identifying host as " ++ host
+    logInfo "Starting agent ..."
 
-        pairSockets connSocket connServer id
+    logInfoM ("Loading checks from " ++) connChecks
 
-validateSend :: SendOpts -> Script SendOpts
-validateSend opts@SendOpts{..} = do
-    validateSocket sendSocket
-    unlessSocket sendSocket $ do
-        logError $ "Agent socket not found at " ++ sendSocket
-        throwT "Agent not running."
-    return opts
+    config <- liftIO $ loadConfig connChecks
+    checks <- liftIO $ parseChecks config
+    chan   <- liftIO $ atomically newTChan
 
-validateConn :: ConnOpts -> Script ConnOpts
-validateConn opts@ConnOpts{..} = do
-    validateSocket connSocket
-    whenSocket connSocket $ do
-        logError $ "Agent socket exists at " ++ connSocket
-        throwT "Agent already running."
-    name <- if null connHost
-            then scriptIO getHostName
-            else return connHost
-    return $ opts { connHost = name }
+    logInfoM (("Adding " ++) . T.unpack . chkName) checks
+
+    liftIO $ forkChecks connSplay chan checks
+
+    tryCatchS (cleanup luri) $ do
+        l <- listen luri chan
+        r <- publish puri chan
+        waitEither_ l r
+  where
+    listen uri chan = async $ runZMQ $ do
+        sock <- agentListen uri
+        forever $ do
+            bs <- receive sock
+            logInfo $ "Received " ++ BS.unpack bs ++ " on " ++ show uri
+            liftIO . atomically $ writeTChan chan bs
+
+    publish uri chan = async $ runZMQ $ do
+        sock <- agentPublish uri
+        forever $ do
+            bs <- liftIO . atomically $ readTChan chan
+            send sock [] bs
+            logInfo $ "Sent " ++ BS.unpack bs ++ " to " ++ show uri
