@@ -24,12 +24,21 @@ instance Show Uri where
     show (Tcp host port) = "tcp://" ++ host ++ ":" ++ show port
     show (Ipc path)      = "ipc://" ++ path
 
-agentNotify     = connectSocket Push
-agentPublish    = connectSocket Push
-serverPublish   = connectSocket Pub
-agentListen     = bindSocket Pull
-serverListen    = bindSocket Pull
-serverSubscribe = bindSocket Sub
+defaultAgent   = "ipc://czar-agent.sock"
+defaultServer  = "tcp://127.0.0.1:5555"
+defaultHandler = "tcp://127.0.0.1:5556"
+
+connectAgentToAgent = connectSocket Push
+
+bindAgentForAgents = bindSocket Pull
+
+connectAgentToServer = connectSocket Push
+
+bindServerForAgents = bindSocket Pull
+
+bindServerForHandlers = bindSocket Router
+
+connectHandlerToServer = connectSocket Dealer
 
 bindSocket :: (SocketType t, Receiver t) => t -> Uri -> ZMQ z (Socket z t)
 bindSocket typ uri =
@@ -56,8 +65,8 @@ ensure uri exists =
               (False, True) -> throwT $ addr ++ " already exists"
               _             -> return ()
 
-tryCatchS :: (Functor m, MonadCatchIO m) => m a -> m b -> EitherT String m b
-tryCatchS after = fmapLT show . try_ after
+tryCatchIO :: (Functor m, MonadCatchIO m) => m a -> m b -> EitherT String m b
+tryCatchIO after = fmapLT show . try_ after
   where
     try_ :: (Functor m, MonadCatchIO m) => m a -> m b -> EitherT SomeException m b
     try_ f g = EitherT $ try (g `finally` f)

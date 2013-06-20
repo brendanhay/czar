@@ -32,3 +32,13 @@ message Event {
   repeated Metric metrics = 6;
   repeated Attribute attributes = 7;
 }
+
+message Subscription {
+  required string identity = 1;
+  optional string description = 2;
+  repeated Tag tags = 5;
+}
+
+message Heartbeat {
+  required string identity = 1;
+}

@@ -76,7 +76,7 @@ connect_ ConnOpts{..} = do
 
     liftIO $ forkChecks connSplay chan checks
 
-    tryCatchS (cleanup luri) $ do
+    tryCatchIO (cleanup luri) $ do
         l <- listen luri chan
         r <- publish puri chan
         waitEither_ l r
