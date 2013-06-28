@@ -27,14 +27,14 @@ import Czar.Server.Routing
 import Czar.Socket
 
 defineOptions "ServerOpts" $ do
-    stringOption "srvListen"  "listen"  defaultServer  ""
+    stringOption "srvListen" "listen" defaultServer
+        ""
 
-    stringOption "srvHandlers" "publish" defaultHandler ""
+    stringOption "srvHandlers" "publish" defaultHandler
+        ""
 
 main :: IO ()
-main = runCommand $ \ServerOpts{..} _ -> runScript $ do
-    setLogging
-
+main = runCommand $ \ServerOpts{..} _ -> scriptLogging $ do
     hds <- parseAddr srvHandlers
     lst <- parseAddr srvListen
 

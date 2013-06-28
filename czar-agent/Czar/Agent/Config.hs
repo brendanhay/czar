@@ -17,19 +17,16 @@ import Data.List                (isSuffixOf)
 import Data.Maybe
 import Data.Monoid
 import Data.Text                (Text)
-import Data.Time.Clock.POSIX
 import System.Directory
 import System.FilePath
 
-import Czar.Log
 import Czar.Protocol
 
-import qualified Data.ByteString.Char8 as BS
-import qualified Data.HashMap.Lazy     as H
-import qualified Data.Sequence         as Seq
-import qualified Data.Text             as T
+import qualified Data.HashMap.Lazy       as H
+import qualified Data.Sequence           as Seq
+import qualified Data.Text               as T
 import qualified Data.Text.Lazy.Encoding as LE
-import qualified Data.Text.Lazy as LT
+import qualified Data.Text.Lazy          as LT
 
 import qualified Czar.Internal.Protocol.Event as E
 

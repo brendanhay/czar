@@ -67,8 +67,8 @@ main = runSubcommand
     , cmd "connect" runConnect
     ]
   where
-    cmd name f = subcommand name $
-       \(_ :: MainOpts) x _ -> runScript $ setLogging >> f x
+    cmd name action = subcommand name $
+        \(_ :: MainOpts) opts _ -> scriptLogging $ action opts
 
 runSend :: SendOpts -> Script ()
 runSend SendOpts{..} = do

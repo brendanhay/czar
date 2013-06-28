@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Czar.Log (
-      setLogging
+      scriptLogging
     , logInfoM
     , logInfo
     , logWarn
@@ -21,13 +21,8 @@ import System.Log.Handler        (setFormatter)
 import System.Log.Handler.Simple
 import System.Log.Logger
 
-setLogging :: MonadIO m => m ()
-setLogging = liftIO $ do
-    hSetBuffering stdout LineBuffering
-    hSetBuffering stderr LineBuffering
-    removeAllHandlers
-    hd <- streamHandler stderr INFO
-    updateGlobalLogger logName (setLevel INFO . setHandlers [formatLog hd])
+scriptLogging :: Script a -> IO a
+scriptLogging action = runScript $ setLogging >> action
 
 logInfoM :: MonadIO m => (a -> String) -> [a] -> m ()
 logInfoM = withPrefix logInfo
@@ -36,6 +31,18 @@ logInfo, logWarn, logError :: MonadIO m => String -> m ()
 logInfo  = logMsg infoM
 logWarn  = logMsg warningM
 logError = logMsg errorM
+
+--
+-- Internal
+--
+
+setLogging :: MonadIO m => m ()
+setLogging = liftIO $ do
+    hSetBuffering stdout LineBuffering
+    hSetBuffering stderr LineBuffering
+    removeAllHandlers
+    hd <- streamHandler stderr INFO
+    updateGlobalLogger logName (setLevel INFO . setHandlers [formatLog hd])
 
 logName :: String
 logName = "log"

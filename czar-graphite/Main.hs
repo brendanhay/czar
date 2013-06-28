@@ -1,14 +1,9 @@
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE RecordWildCards       #-}
-{-# LANGUAGE TemplateHaskell       #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE TemplateHaskell   #-}
 
 module Main (main) where
 
-import Control.Applicative
-import Control.Concurrent
-import Control.Concurrent.Async
-import Control.Concurrent.STM
 import Control.Error
 import Control.Monad
 import Control.Monad.IO.Class
@@ -20,16 +15,14 @@ import Czar.Log
 import Czar.Protocol
 import Czar.Socket
 
-import qualified Data.ByteString.Char8 as BS
-import qualified Data.Sequence         as Seq
+import qualified Data.Sequence as Seq
 
 defineOptions "HandlerOpts" $ do
-    stringOption "hdServer" "server" defaultHandler "Server for the handler to connect to."
+    stringOption "hdServer" "server" defaultHandler
+        "Server for the handler to connect to."
 
 main :: IO ()
-main = runCommand $ \HandlerOpts{..} _ -> runScript $ do
-    setLogging
-
+main = runCommand $ \HandlerOpts{..} _ -> scriptLogging $ do
     addr <- parseAddr hdServer
 
     logInfo "Starting handler ..."
