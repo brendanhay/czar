@@ -26,6 +26,8 @@ import Czar.Log
 import Czar.Server.Routing
 import Czar.Socket
 
+-- FIXME: Add a --force command to overwrite unix sockets if possible
+
 defineOptions "ServerOpts" $ do
     stringOption "srvListen" "listen" defaultServer
         ""

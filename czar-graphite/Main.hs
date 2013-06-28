@@ -25,15 +25,15 @@ main :: IO ()
 main = runCommand $ \HandlerOpts{..} _ -> scriptLogging $ do
     addr <- parseAddr hdServer
 
-    logInfo "Starting handler ..."
+    logInfo "Starting graphite handler ..."
 
     scriptIO . connect addr $ do
-
-        let sub = Subscription
-                      "graphite"
-                      (Just "Graphite Handler")
-                      (Seq.fromList [Tag "*"])
         send sub
 
         forever $ eitherReceive logError $ \evt -> do
             liftIO $ print (evt :: Event)
+  where
+    sub = Subscription
+        "graphite"
+        (Just "Graphite Handler")
+        (Seq.fromList [Tag "*"])

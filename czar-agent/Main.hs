@@ -36,8 +36,8 @@ import qualified Czar.Internal.Protocol.Event as E
 defineOptions "MainOpts" $ return ()
 
 defineOptions "SendOpts" $ do
-    stringOption  "sendAgent" "agent" defaultAgent
-        "Path to the ipc socket."
+    stringOption "sendAgent" "agent" defaultAgent
+        "Socket of the agent to send to."
 
     stringsOption "sendTags" "tags" []
         "Comma separated list of tags to add."
