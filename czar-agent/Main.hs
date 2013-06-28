@@ -97,8 +97,8 @@ runConnect ConnOpts{..} = do
     scriptIO $ do
         logInfoM ("Loading checks from " ++) connChecks
 
-        checks <- liftIO $ loadChecks connChecks
-        queue  <- liftIO $ atomically newTQueue
+        checks <- loadChecks connChecks
+        queue  <- atomically newTQueue
 
         logInfoM (("Adding " ++) . T.unpack . chkName) checks
 
