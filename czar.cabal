@@ -20,11 +20,9 @@ library
     hs-source-dirs:    czar
 
     exposed-modules:
-        Czar.Log
-      , Czar.Protocol
+        Control.Concurrent.Async.Extensions
+      , Czar.Log
       , Czar.Socket
-      , Data.MultiBiMap
-
       , Czar.Internal.Protocol
       , Czar.Internal.Protocol.Attribute
       , Czar.Internal.Protocol.Event
@@ -33,6 +31,8 @@ library
       , Czar.Internal.Protocol.Subscription
       , Czar.Internal.Protocol.Tag
       , Czar.Internal.Protocol.Threshold
+      , Czar.Protocol
+      , Data.MultiBiMap
 
     ghc-options:
         -Wall
@@ -50,6 +50,7 @@ library
       , hashable
       , hslogger                  >= 1.2.1
       , MonadCatchIO-transformers >= 0.3
+      , monads-tf
       , network
       , old-locale
       , parsec
@@ -59,8 +60,8 @@ library
       , text                      >= 0.11
       , time
       , transformers              >= 0.3
+      , unix
       , unordered-containers
-      , zeromq3-haskell
 
 executable czar-server
     default-language:  Haskell2010
@@ -89,36 +90,37 @@ executable czar-server
       , stm
       , text                 >= 0.11
       , transformers         >= 0.3
+      , unix
       , unordered-containers
 
--- executable czar-agent
---     default-language:  Haskell2010
---     main-is:           Main.hs
---     hs-source-dirs:    czar-agent
+executable czar-agent
+    default-language:  Haskell2010
+    main-is:           Main.hs
+    hs-source-dirs:    czar-agent
 
---     ghc-options:
---         -threaded
---         -Wall
---         -fwarn-tabs
---         -funbox-strict-fields
+    ghc-options:
+        -threaded
+        -Wall
+        -fwarn-tabs
+        -funbox-strict-fields
 
---     build-depends:
---         async
---       , base                 >= 4 && < 5
---       , bytestring           >= 0.9
---       , configurator
---       , czar
---       , directory            >= 1.2
---       , errors               >= 1.4
---       , filepath             >= 1.3
---       , network
---       , options              >= 0.1
---       , stm
---       , text                 >= 0.11
---       , time
---       , transformers         >= 0.3
---       , unordered-containers
---       , zeromq3-haskell
+    build-depends:
+        async
+      , base                 >= 4 && < 5
+      , bytestring           >= 0.9
+      , configurator
+      , containers
+      , czar
+      , directory            >= 1.2
+      , errors               >= 1.4
+      , filepath             >= 1.3
+      , network
+      , options              >= 0.1
+      , stm
+      , text                 >= 0.11
+      , time
+      , transformers         >= 0.3
+      , unordered-containers
 
 executable czar-graphite
     default-language:  Haskell2010

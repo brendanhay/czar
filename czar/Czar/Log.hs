@@ -4,7 +4,7 @@ module Czar.Log (
       setLogging
     , logInfoM
     , logInfo
-    , logWarning
+    , logWarn
     , logError
     ) where
 
@@ -23,6 +23,8 @@ import System.Log.Logger
 
 setLogging :: MonadIO m => m ()
 setLogging = liftIO $ do
+    hSetBuffering stdout LineBuffering
+    hSetBuffering stderr LineBuffering
     removeAllHandlers
     hd <- streamHandler stderr INFO
     updateGlobalLogger logName (setLevel INFO . setHandlers [formatLog hd])
@@ -30,10 +32,10 @@ setLogging = liftIO $ do
 logInfoM :: MonadIO m => (a -> String) -> [a] -> m ()
 logInfoM = withPrefix logInfo
 
-logInfo, logWarning, logError :: MonadIO m => String -> m ()
-logInfo    = logMsg infoM
-logWarning = logMsg warningM
-logError   = logMsg errorM
+logInfo, logWarn, logError :: MonadIO m => String -> m ()
+logInfo  = logMsg infoM
+logWarn  = logMsg warningM
+logError = logMsg errorM
 
 logName :: String
 logName = "log"

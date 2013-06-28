@@ -1,37 +1,25 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE TupleSections     #-}
+{-# LANGUAGE TupleSections   #-}
 
 module Czar.Agent.Config where
 
 import Prelude hiding (lookup)
 
-import Control.Applicative      ((<$>), (<*>))
+import Control.Applicative
 import Control.Concurrent
 import Control.Concurrent.Async
-import Control.Concurrent.STM
-import Control.Monad
 import Data.Configurator
 import Data.Configurator.Types
-import Data.List                (isSuffixOf)
+import Data.List               (isSuffixOf)
 import Data.Maybe
 import Data.Monoid
-import Data.Text                (Text)
+import Data.Text               (Text)
 import Data.Time.Clock.POSIX
 import System.Directory
 import System.FilePath
 
-import Czar.Log
-import Czar.Protocol
-
-import qualified Data.ByteString.Char8 as BS
-import qualified Data.HashMap.Lazy     as H
-import qualified Data.Sequence         as Seq
-import qualified Data.Text             as T
-import qualified Data.Text.Lazy.Encoding as LE
-import qualified Data.Text.Lazy as LT
-
-import qualified Czar.Internal.Protocol.Event as E
+import qualified Data.HashMap.Lazy as H
+import qualified Data.Text         as T
 
 data Check = Check
     { chkName     :: Text
@@ -47,8 +35,8 @@ extension = ".cfg"
 command :: Text
 command = ".command"
 
-loadConfig :: [FilePath] -> IO Config
-loadConfig paths = mapM expand paths >>= load . concat
+loadConfig :: [FilePath] -> IO (Config, ThreadId)
+loadConfig paths = mapM expand paths >>= autoReload autoConfig . concat
   where
     expand p = do
         a <- attrs p
@@ -68,10 +56,8 @@ loadConfig paths = mapM expand paths >>= load . concat
         | extension `isSuffixOf` p = True
         | otherwise                = False
 
-parseChecks :: Config -> IO [Check]
-parseChecks cfg = names >>= mapM (parseCheck cfg)
-  where
-    names = filter (command `T.isSuffixOf`) . H.keys <$> getMap cfg
+getCheckNames :: Config -> IO [Name]
+getCheckNames cfg = filter (command `T.isSuffixOf`) . H.keys <$> getMap cfg
 
 parseCheck :: Config -> Name -> IO Check
 parseCheck cfg name = Check key
@@ -94,18 +80,5 @@ parseCheck cfg name = Check key
         (error $ "Invalid check command: " ++ T.unpack name)
         (T.stripSuffix command name)
 
-forkChecks :: Integer -> TQueue Event -> [Check] -> IO ()
-forkChecks splay queue cs = zipWithM fork cs steps >>= mapM_ link
-  where
-    fork Check{..} n = async $ do
-        threadDelay n
-        forever $ do
-            threadDelay $ chkInterval * 1000000
-
-            let evt = E.Event 0 (enc chkName) "key" (enc <$> chkDesc) (Seq.fromList []) (Seq.fromList []) (Seq.fromList [])
-
-            atomically $ writeTQueue queue evt
-
-    steps = scanl1 (+) . repeat $ fromIntegral splay * 10000
-
-    enc = Utf8 . LE.encodeUtf8 . LT.fromStrict
+-- startCheck :: Check -> IO (Async ())
+-- startCheck

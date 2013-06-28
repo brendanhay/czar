@@ -25,7 +25,7 @@ module Data.FSM where
 import GHC.Exts
 
 -- A hack to turn the type-level 'elem' defined below into a GHC
--- 'Constraint', which allows for nicer syntax in our 'user code'
+-- 'Constraint', which allows for nicer syntax
 type family Elem (x :: k) (xs :: [k]) :: Constraint
 type instance Elem x xs = (Elem' x xs ~ ValidMessageForState)
 
@@ -40,13 +40,11 @@ type instance where
     Elem' x (x ': xs) = ValidMessageForState
     Elem' x (y ': xs) = Elem' x xs
 
-
 -- Types of messages which can be pushed through the state
 data Message1 = Message1 Int
 data Message2 = Message2 Int
 
--- The state data type. Notice it's parametrised over a list of types.
--- For this demo, the state only contains a single Int value
+-- The state data type parametrised over a list of types.
 data State :: [*] -> * where
       State :: Int -> State m
 

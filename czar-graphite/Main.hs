@@ -1,7 +1,7 @@
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE RecordWildCards     #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell     #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE RecordWildCards       #-}
+{-# LANGUAGE TemplateHaskell       #-}
 
 module Main (main) where
 
@@ -12,21 +12,16 @@ import Control.Concurrent.STM
 import Control.Error
 import Control.Monad
 import Control.Monad.IO.Class
-import Czar.Log
-import Czar.Socket
-import Network.BSD              hiding (hostName)
 import Options
 
+import Czar.Internal.Protocol.Subscription
+import Czar.Internal.Protocol.Tag
+import Czar.Log
 import Czar.Protocol
+import Czar.Socket
 
-
-import qualified System.ZMQ3.Monadic as Z
-
-import qualified Control.Exception     as E
 import qualified Data.ByteString.Char8 as BS
-import qualified Data.Text             as T
-
-import qualified Data.Sequence as Seq
+import qualified Data.Sequence         as Seq
 
 defineOptions "HandlerOpts" $ do
     stringOption "hdServer" "server" defaultHandler "Server for the handler to connect to."
@@ -35,29 +30,17 @@ main :: IO ()
 main = runCommand $ \HandlerOpts{..} _ -> runScript $ do
     setLogging
 
-    uri <- parseUri hdServer
+    addr <- parseAddr hdServer
 
     logInfo "Starting handler ..."
 
-    tryCatchIO (cleanup uri) $ runZMQ $ do
-        sock <- socket Dealer
+    scriptIO . connect addr $ do
 
-        connect sock $ show uri
-
-        -- identify name of handler
-        setIdentity (restrict "graphite") sock
-
-        let subs = Subscription
+        let sub = Subscription
                       "graphite"
                       (Just "Graphite Handler")
                       (Seq.fromList [Tag "*"])
+        send sub
 
-        -- send subscription
-        send sock [] $ messagePut subs
-
-        -- setup handler to respond to heartbeats with identity
-        forever $ do
-            bs <- receive sock
-            liftIO $ print bs
-
-        -- setup handler to handle metrics
+        forever $ eitherReceive logError $ \evt -> do
+            liftIO $ print (evt :: Event)

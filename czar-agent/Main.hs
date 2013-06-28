@@ -1,96 +1,120 @@
 {-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE TemplateHaskell     #-}
+
+-- |
+-- Module      : Main
+-- Copyright   : (c) 2013 Brendan Hay <brendan.g.hay@gmail.com.com>
+-- License     : This Source Code Form is subject to the terms of
+--               the Mozilla Public License, v. 2.0.
+--               A copy of the MPL can be found in the LICENSE file or
+--               you can obtain it at http://mozilla.org/MPL/2.0/.
+-- Maintainer  : Brendan Hay <brendan.g.hay@gmail.com>
+-- Stability   : experimental
+-- Portability : non-portable (GHC extensions)
 
 module Main (main) where
 
-import Control.Concurrent.Async
+import Control.Concurrent.Async.Extensions
 import Control.Concurrent.STM
 import Control.Error
 import Control.Monad
 import Control.Monad.IO.Class
+import Network.BSD                          hiding (hostName)
+import Options
+
 import Czar.Agent.Config
 import Czar.Log
 import Czar.Socket
-import Network.BSD              hiding (hostName)
-import Options
-import System.ZMQ3.Monadic      hiding (async)
 
-import qualified Data.ByteString.Char8 as BS
-import qualified Data.Text             as T
+import qualified Data.Sequence as Seq
+import qualified Data.Text     as T
+
+import qualified Czar.Internal.Protocol.Event as E
 
 defineOptions "MainOpts" $ return ()
 
 defineOptions "SendOpts" $ do
-    stringOption  "sendAgent" "agent" "ipc://czar-agent.sock" "Path to the ipc socket."
-    stringsOption "sendTags"   "tags"  [] "Comma separated list of tags to add."
+    stringOption  "sendAgent" "agent" defaultAgent
+        "Path to the ipc socket."
+
+    stringsOption "sendTags" "tags" []
+        "Comma separated list of tags to add."
 
 defineOptions "ConnOpts" $ do
-    stringOption  "connListen" "listen"   "ipc://czar-agent.sock" "Path to the ipc socket."
-    stringOption  "connPublish" "server"   "tcp://localhost:5555" "Server for the agent to connect to."
-    stringOption  "connHost"   "hostname" "" "Hostname used to identify the machine."
-    integerOption "connSplay"  "splay"    50 "Given a list of checks, differentiate their start times by this number of milliseconds."
-    stringsOption "connTags"   "tags"     [] "Comma separated list of tags to always send."
-    stringsOption "connChecks" "checks"   ["etc/czar/checks.list.d"] "Paths to files or directories containing check configuration."
+    stringOption "connListen" "listen" defaultAgent
+        "Socket to listen on for incoming connections."
+
+    stringOption "connServer" "server" defaultServer
+        "Server for the agent to connect to."
+
+    stringOption "connHost" "hostname" ""
+        "Hostname used to identify the machine."
+
+    integerOption "connSplay" "splay" 50
+        "Given a list of checks, differentiate their start times by this number of milliseconds."
+
+    stringsOption "connTags" "tags" []
+        "Comma separated list of tags to always send."
+
+    stringsOption "connChecks" "checks" ["etc/czar/checks.list.d"]
+        "Paths to files or directories containing check configuration."
 
 main :: IO ()
 main = runSubcommand
-    [ cmd "send"    send_
-    , cmd "connect" connect_
+    [ cmd "send"    runSend
+    , cmd "connect" runConnect
     ]
   where
     cmd name f = subcommand name $
-        \(_ :: MainOpts) x _ -> runScript $ setLogging >> f x
+       \(_ :: MainOpts) x _ -> runScript $ setLogging >> f x
 
-send_ :: SendOpts -> Script ()
-send_ SendOpts{..} = do
-    uri <- parseUri sendAgent
+runSend :: SendOpts -> Script ()
+runSend SendOpts{..} = do
+    addr <- parseAddr sendAgent
 
     logInfo "Connecting to agent ..."
 
-    scriptIO $ runZMQ $ do
-        sock <- agentNotify uri
-        send sock [] "Hello!"
-        logInfo $ "Payload sent to " ++ show uri
+    scriptIO . connect addr $ do
+        send $ E.Event 0 "hi!" "key" Nothing (Seq.fromList []) (Seq.fromList []) (Seq.fromList [])
+        logInfo $ "Payload sent to " ++ show addr
 
-    logInfo "OK"
+    logInfo "Done."
 
-connect_ :: ConnOpts -> Script ()
-connect_ ConnOpts{..} = do
-    host <- if null connHost then liftIO getHostName else return connHost
+runConnect :: ConnOpts -> Script ()
+runConnect ConnOpts{..} = do
+    host <- if null connHost
+            then liftIO getHostName
+            else return connHost
 
-    luri <- parseUri connListen
-    puri <- parseUri connPublish
+    srv  <- parseAddr connServer
+    lst  <- parseAddr connListen
 
     logInfo $ "Identifying host as " ++ host
     logInfo "Starting agent ..."
 
-    logInfoM ("Loading checks from " ++) connChecks
+    scriptIO $ do
+        logInfoM ("Loading checks from " ++) connChecks
 
-    config <- liftIO $ loadConfig connChecks
-    checks <- liftIO $ parseChecks config
-    chan   <- liftIO $ atomically newTChan
+        checks <- liftIO $ loadConfig connChecks >>= parseChecks
+        queue  <- liftIO $ atomically newTQueue
 
-    logInfoM (("Adding " ++) . T.unpack . chkName) checks
+        logInfoM (("Adding " ++) . T.unpack . chkName) checks
 
-    liftIO $ forkChecks connSplay chan checks
+        forkChecks connSplay queue checks
 
-    tryCatchIO (cleanup luri) $ do
-        l <- listen luri chan
-        r <- publish puri chan
-        waitEither_ l r
+        linkedRace_
+            (server srv queue)
+            (agents lst queue)
   where
-    listen uri chan = async $ runZMQ $ do
-        sock <- agentListen uri
-        forever $ do
-            bs <- receive sock
-            logInfo $ "Received " ++ BS.unpack bs ++ " on " ++ show uri
-            liftIO . atomically $ writeTChan chan bs
+    agents addr queue = listen addr . accept $ do
+        logInfo "Accepted agent connection"
+        eitherReceive logError $ \evt ->
+            liftIO . atomically $ writeTQueue queue evt
+        close
 
-    publish uri chan = async $ runZMQ $ do
-        sock <- agentPublish uri
-        forever $ do
-            bs <- liftIO . atomically $ readTChan chan
-            send sock [] bs
-            logInfo $ "Sent " ++ BS.unpack bs ++ " to " ++ show uri
+    server addr queue = connect addr . forever $ do
+        evt <- liftIO . atomically $ readTQueue queue
+        send evt
+        logInfo $ "Sent " ++ show evt ++ " to " ++ show addr

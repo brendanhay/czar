@@ -41,6 +41,9 @@ data MultiBiMap a b where
         -> H.HashMap b (S.HashSet a)
         -> MultiBiMap a b
 
+-- instance (Show a, Show b) => Show (MultiBiMap a b) where
+--     show (Map dir inv) = "MultiBiMap " ++ show dir ++ " " ++ show inv
+
 deriving instance (Show a, Show b) => Show (MultiBiMap a b)
 
 empty :: Constraints a b => MultiBiMap a b
