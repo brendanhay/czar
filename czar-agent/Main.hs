@@ -24,7 +24,7 @@ import Control.Monad.IO.Class
 import Network.BSD                          hiding (hostName)
 import Options
 
-import Czar.Agent.Config
+import Czar.Agent.Check
 import Czar.Log
 import Czar.Socket
 
@@ -36,7 +36,7 @@ import qualified Czar.Internal.Protocol.Event as E
 defineOptions "MainOpts" $ return ()
 
 defineOptions "SendOpts" $ do
-    stringOption "sendAgent" "agent" defaultAgent
+    stringOption "sendAgent" "connect" defaultAgent
         "Socket of the agent to send to."
 
     stringsOption "sendTags" "tags" []
@@ -97,7 +97,7 @@ runConnect ConnOpts{..} = do
     scriptIO $ do
         logInfoM ("Loading checks from " ++) connChecks
 
-        checks <- liftIO $ loadConfig connChecks >>= parseChecks
+        checks <- liftIO $ loadChecks connChecks
         queue  <- liftIO $ atomically newTQueue
 
         logInfoM (("Adding " ++) . T.unpack . chkName) checks
