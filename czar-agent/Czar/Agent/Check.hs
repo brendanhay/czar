@@ -59,8 +59,7 @@ forkChecks splay queue cs = liftIO $ zipWithM fork cs steps >>= mapM_ link
             atomically $ writeTQueue queue evt
 
     steps = scanl1 (+) . repeat $ fromIntegral splay * 10000
-
-    enc = Utf8 . LE.encodeUtf8 . LT.fromStrict
+    enc   = Utf8 . LE.encodeUtf8 . LT.fromStrict
 
 --
 -- Internal
