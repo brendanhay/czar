@@ -39,9 +39,6 @@ data Table a = Table (MultiBiMap a Tag) (HashMap a (TQueue Event))
 
 newtype Routes a = Routes (IORef (Table a))
 
--- FIXME: Should be STM or MVar to ensure notify doesn't have something added
---        while pushing to existing?
-
 instance Hashable Tag where
     hashWithSalt salt (T.Tag n) = hashWithSalt salt $ P.utf8ToBS n
 
