@@ -66,6 +66,6 @@ withPrefix f g = mapM_ (f . g)
 formatLog :: GenericHandler Handle -> GenericHandler Handle
 formatLog hd = setFormatter hd $ varFormatter [("nid", nid), ("utc", utc)] fmt
   where
-    fmt = "[ $utc $pid $nid $prio ] $msg"
+    fmt = "[$utc $pid $nid $prio] $msg"
     utc = formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%SZ" <$> getCurrentTime
     nid = drop 9 . show <$> myThreadId
