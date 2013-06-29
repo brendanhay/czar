@@ -18,10 +18,12 @@ module Control.Concurrent.Timer (
     , threadSleep
     , startTimer
     , resetTimer
+    , cancelTimer
     ) where
 
 import Control.Concurrent
 import Control.Concurrent.Async
+import Control.Monad.IO.Class
 
 newtype Seconds = Seconds Int deriving (Eq, Ord, Num, Real)
 
@@ -29,24 +31,28 @@ data Timer = Timer (MVar Ref)
 
 data Ref = Ref Seconds (IO ()) (Async ())
 
-threadSleep :: Seconds -> IO ()
-threadSleep (Seconds n) = threadDelay $ n * 1000000
+threadSleep :: MonadIO m => Seconds -> m ()
+threadSleep (Seconds n) = liftIO . threadDelay $ n * 1000000
 
-startTimer :: Seconds -> IO () -> IO Timer
-startTimer n action = createRef n action >>= fmap Timer . newMVar
+startTimer :: (Functor m, MonadIO m) => Seconds -> IO () -> m Timer
+startTimer n action = createRef n action >>= fmap Timer . liftIO . newMVar
 
-resetTimer :: Timer -> IO ()
-resetTimer (Timer var) = modifyMVar_ var reset
+resetTimer :: MonadIO m => Timer -> m ()
+resetTimer (Timer var) = liftIO $ modifyMVar_ var reset
   where
     reset (Ref n action ref) = cancel ref >> createRef n action
+
+cancelTimer :: MonadIO m => Timer -> m ()
+cancelTimer (Timer var) = liftIO $ do
+    (Ref _ _ ref) <- readMVar var
+    cancel ref
 
 --
 -- Internal
 --
 
-createRef :: Seconds -> IO () -> IO Ref
-createRef n action = do
+createRef :: MonadIO m => Seconds -> IO () -> m Ref
+createRef n action = liftIO $ do
     ref <- async $ threadSleep n >> action
-    link ref
     return $! Ref n action ref
 

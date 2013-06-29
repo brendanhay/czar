@@ -25,8 +25,8 @@ import Data.Foldable          (toList)
 import Czar.Log
 import Czar.Protocol          (Event, Subscription, Tag)
 
-import qualified Data.HashMap.Strict                 as Queues
-import qualified Data.MultiBiMap                     as Index
+import qualified Data.HashMap.Strict as Queues
+import qualified Data.MultiBiMap     as Index
 
 import qualified Czar.Internal.Protocol.Event        as E
 import qualified Czar.Internal.Protocol.Subscription as S

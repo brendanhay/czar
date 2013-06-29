@@ -47,5 +47,4 @@ message Heartbeat {
   }
 
   required Mode mode = 1;
-  optional string reason = 2;
 }

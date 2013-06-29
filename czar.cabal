@@ -30,8 +30,8 @@ library
       , Czar.Internal.Protocol.Attribute
       , Czar.Internal.Protocol.Event
       , Czar.Internal.Protocol.Metric
-      , Czar.Internal.Protocol.Ping
-      , Czar.Internal.Protocol.Pong
+      , Czar.Internal.Protocol.Heartbeat
+      , Czar.Internal.Protocol.Heartbeat.Mode
       , Czar.Internal.Protocol.Subscription
       , Czar.Internal.Protocol.Tag
       , Czar.Internal.Protocol.Threshold
@@ -91,6 +91,7 @@ executable czar-server
       , errors               >= 1.4
       , filepath             >= 1.3
       , hashable
+      , MonadCatchIO-transformers
       , network
       , options              >= 0.1
       , stm
@@ -120,6 +121,7 @@ executable czar-agent
       , directory            >= 1.2
       , errors               >= 1.4
       , filepath             >= 1.3
+      , MonadCatchIO-transformers
       , network
       , options              >= 0.1
       , stm

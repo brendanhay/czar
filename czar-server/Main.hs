@@ -17,12 +17,16 @@ module Main (main) where
 import Control.Concurrent
 import Control.Concurrent.Race
 import Control.Concurrent.STM
+import Control.Concurrent.Timer
 import Control.Error
 import Control.Monad
+import Control.Monad.CatchIO
 import Control.Monad.IO.Class
+import Network.Socket           (SockAddr)
 import Options
 
 import Czar.Log
+import Czar.Protocol
 import Czar.Server.Routing
 import Czar.Socket
 
@@ -45,19 +49,32 @@ main = runCommand $ \ServerOpts{..} _ -> scriptLogging $ do
     scriptIO $ do
         routes <- liftIO emptyRoutes
         linkedRace_
-            (handlers hds routes)
-            (agents lst routes)
-  where
-    handlers addr routes = listen addr . accept $ do
-        logInfo "Accepted handler connection"
-        eitherReceive logError $ \s -> do
-            tid   <- liftIO myThreadId
-            queue <- liftIO $ subscribe s tid routes
-            forever $ do
-                evt <- liftIO . atomically $ readTQueue queue
-                send evt
+            (listenHandlers hds routes)
+            (listenAgents lst)
 
-    agents addr routes = listen addr . accept $ do
-        logInfo "Accepted agent connection"
-        forever $ eitherReceive logError $ \evt ->
-            liftIO $ notify evt routes
+listenHandlers :: MonadCatchIO m => SockAddr -> Routes ThreadId -> m ()
+listenHandlers addr routes = listen addr $ do
+    logInfo "Accepted handler connection"
+    receive handle
+  where
+    handle (S sub) = do
+        tid   <- liftIO myThreadId
+        queue <- liftIO $ subscribe sub tid routes
+
+        forever $ do
+            evt <- liftIO . atomically $ readTQueue queue
+            send evt
+    handle _       = return ()
+
+listenAgents :: MonadCatchIO m => SockAddr -> m ()
+listenAgents addr = listen addr $ do
+    peer <- peerName
+    logInfo $ "ACCEPT <- " ++ peer
+
+    sendHeartbeats 10 >>= loop peer
+  where
+    loop p = receive . handle p
+
+    handle p t (E evt) = resetTimer t >> liftIO (print evt) >> loop p t
+    handle p t Ack     = logInfo ("ACK <- " ++ p) >> resetTimer t >> loop p t
+    handle p t _       = logWarn ("UNKNOWN/FIN -> " ++ p) >> cancelTimer t

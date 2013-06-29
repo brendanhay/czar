@@ -1,6 +1,7 @@
+{-# LANGUAGE ConstraintKinds     #-}
 {-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell     #-}
 
 -- |
@@ -20,12 +21,15 @@ import Control.Concurrent.Race
 import Control.Concurrent.STM
 import Control.Error
 import Control.Monad
+import Control.Monad.CatchIO
 import Control.Monad.IO.Class
-import Network.BSD                          hiding (hostName)
+import Network.BSD              hiding (hostName)
+import Network.Socket                  (SockAddr)
 import Options
 
 import Czar.Agent.Check
 import Czar.Log
+import Czar.Protocol
 import Czar.Socket
 
 import qualified Data.Sequence as Seq
@@ -105,15 +109,30 @@ runConnect ConnOpts{..} = do
         forkChecks connSplay queue checks
 
         linkedRace_
-            (server srv queue)
-            (agents lst queue)
-  where
-    agents addr queue = listen addr . accept $ do
-        logInfo "Accepted agent connection"
-        eitherReceive logError $ \evt ->
-            liftIO . atomically $ writeTQueue queue evt
+            (connectServer srv queue)
+            (listenAgents lst queue)
 
-    server addr queue = connect addr . forever $ do
+connectServer :: MonadCatchIO m => SockAddr -> TQueue Event -> m ()
+connectServer addr queue = connect addr $ do
+    peer <- peerName
+    _    <- fork $ heartbeats peer
+
+    forever $ do
         evt <- liftIO . atomically $ readTQueue queue
         send evt
         logInfo $ "Sent " ++ show evt ++ " to " ++ show addr
+  where
+    heartbeats = receive . handle
+
+    handle p Syn = logInfo ("SYN <- " ++ p) >> send Ack >> logInfo ("ACK ->" ++ p) >> heartbeats p
+    handle p _   = logWarn ("UNKNOWN/FIN -> " ++ p) >> return ()
+
+listenAgents :: MonadCatchIO m => SockAddr -> TQueue Event -> m ()
+listenAgents addr queue = listen addr $ do
+    logInfo "Accepted agent connection"
+    loop
+  where
+    loop = receive handle
+
+    handle (E evt) = liftIO (atomically $ writeTQueue queue evt) >> loop
+    handle _       = return ()
