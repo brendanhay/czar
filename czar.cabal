@@ -20,18 +20,24 @@ library
     hs-source-dirs:    czar
 
     exposed-modules:
-        Control.Concurrent.Async.Extensions
+        Control.Concurrent.Race
+      , Control.Concurrent.Timer
+
       , Czar.Log
       , Czar.Socket
+
       , Czar.Internal.Protocol
       , Czar.Internal.Protocol.Attribute
       , Czar.Internal.Protocol.Event
-      , Czar.Internal.Protocol.Heartbeat
       , Czar.Internal.Protocol.Metric
+      , Czar.Internal.Protocol.Ping
+      , Czar.Internal.Protocol.Pong
       , Czar.Internal.Protocol.Subscription
       , Czar.Internal.Protocol.Tag
       , Czar.Internal.Protocol.Threshold
+
       , Czar.Protocol
+
       , Data.MultiBiMap
 
     ghc-options:
@@ -50,7 +56,7 @@ library
       , hashable
       , hslogger                  >= 1.2.1
       , MonadCatchIO-transformers >= 0.3
-      , monads-tf
+      , mtl
       , network
       , old-locale
       , parsec

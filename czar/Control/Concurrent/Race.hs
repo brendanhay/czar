@@ -1,5 +1,5 @@
 -- |
--- Module      : Control.Concurrent.Async.Extensions
+-- Module      : Control.Concurrent.Race
 -- Copyright   : (c) 2013 Brendan Hay <brendan.g.hay@gmail.com.com>
 -- License     : This Source Code Form is subject to the terms of
 --               the Mozilla Public License, v. 2.0.
@@ -9,7 +9,7 @@
 -- Stability   : experimental
 -- Portability : non-portable (GHC extensions)
 
-module Control.Concurrent.Async.Extensions where
+module Control.Concurrent.Race where
 
 import Control.Concurrent.Async
 import Control.Monad

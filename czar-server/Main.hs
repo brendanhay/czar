@@ -15,7 +15,7 @@
 module Main (main) where
 
 import Control.Concurrent
-import Control.Concurrent.Async.Extensions
+import Control.Concurrent.Race
 import Control.Concurrent.STM
 import Control.Error
 import Control.Monad
@@ -56,10 +56,8 @@ main = runCommand $ \ServerOpts{..} _ -> scriptLogging $ do
             forever $ do
                 evt <- liftIO . atomically $ readTQueue queue
                 send evt
-            close
 
     agents addr routes = listen addr . accept $ do
         logInfo "Accepted agent connection"
         forever $ eitherReceive logError $ \evt ->
             liftIO $ notify evt routes
-        close

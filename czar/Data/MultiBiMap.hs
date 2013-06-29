@@ -28,17 +28,19 @@ module Data.MultiBiMap (
     ) where
 
 import Data.Hashable
-import Prelude       hiding (lookup)
+import Data.HashMap.Strict        (HashMap)
+import Data.HashSet               (HashSet)
+import Prelude             hiding (lookup)
 
-import qualified Data.HashMap.Strict as H
-import qualified Data.HashSet        as S
+import qualified Data.HashMap.Strict as Map
+import qualified Data.HashSet        as Set
 
 type Constraints a b = (Eq a, Hashable a, Eq b, Hashable b)
 
 data MultiBiMap a b where
     Map :: Constraints a b
-        => H.HashMap a (S.HashSet b)
-        -> H.HashMap b (S.HashSet a)
+        => Map.HashMap a (HashSet b)
+        -> Map.HashMap b (HashSet a)
         -> MultiBiMap a b
 
 -- instance (Show a, Show b) => Show (MultiBiMap a b) where
@@ -47,19 +49,19 @@ data MultiBiMap a b where
 deriving instance (Show a, Show b) => Show (MultiBiMap a b)
 
 empty :: Constraints a b => MultiBiMap a b
-empty = Map H.empty H.empty
+empty = Map Map.empty Map.empty
 
 insert :: Constraints a b => a -> [b] -> MultiBiMap a b -> MultiBiMap a b
 insert k vs (Map dir inv) = Map
-    (H.insertWith S.union k (S.fromList vs) dir)
+    (Map.insertWith Set.union k (Set.fromList vs) dir)
     (foldl update inv vs)
   where
-    update m v = H.insertWith S.union v (S.singleton k) m
+    update m v = Map.insertWith Set.union v (Set.singleton k) m
 
 delete :: Constraints a b => a -> MultiBiMap a b -> MultiBiMap a b
 delete k m@(Map dir inv) = Map
-    (H.delete k dir)
-    (foldl (flip H.delete) inv $ direct k m)
+    (Map.delete k dir)
+    (foldl (flip Map.delete) inv $ direct k m)
 
 direct :: Constraints a b => a -> MultiBiMap a b -> [b]
 direct k (Map dir _) = lookup k dir
@@ -71,5 +73,5 @@ inverse v (Map _ inv) = lookup v inv
 -- Internal
 --
 
-lookup :: (Eq a, Hashable a) =>  a -> H.HashMap a (S.HashSet b) -> [b]
-lookup k = maybe [] S.toList . H.lookup k
+lookup :: (Eq a, Hashable a) =>  a -> Map.HashMap a (HashSet b) -> [b]
+lookup k = maybe [] Set.toList . Map.lookup k

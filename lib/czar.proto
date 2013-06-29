@@ -40,5 +40,12 @@ message Subscription {
 }
 
 message Heartbeat {
-  required string identity = 1;
+  enum Mode {
+    SYN = 1;
+    ACK = 2;
+    FIN = 3;
+  }
+
+  required Mode mode = 1;
+  optional string reason = 2;
 }

@@ -16,7 +16,7 @@
 
 module Main (main) where
 
-import Control.Concurrent.Async.Extensions
+import Control.Concurrent.Race
 import Control.Concurrent.STM
 import Control.Error
 import Control.Monad
@@ -112,7 +112,6 @@ runConnect ConnOpts{..} = do
         logInfo "Accepted agent connection"
         eitherReceive logError $ \evt ->
             liftIO . atomically $ writeTQueue queue evt
-        close
 
     server addr queue = connect addr . forever $ do
         evt <- liftIO . atomically $ readTQueue queue
