@@ -39,6 +39,9 @@ defineOptions "ServerOpts" $ do
     stringOption "srvHandlers" "publish" defaultHandler
         ""
 
+    integerOption "srvTimeout" "heartbeat" 30
+        ""
+
 main :: IO ()
 main = runCommand $ \ServerOpts{..} _ -> scriptLogging $ do
     hds <- parseAddr srvHandlers
@@ -46,14 +49,16 @@ main = runCommand $ \ServerOpts{..} _ -> scriptLogging $ do
 
     logInfo "Starting server ..."
 
+    let n = fromInteger srvTimeout
+
     scriptIO $ do
         routes <- liftIO emptyRoutes
         linkedRace_
-            (listenHandlers hds routes)
-            (listenAgents lst)
+            (listenHandlers n hds routes)
+            (listenAgents n lst)
 
-listenHandlers :: MonadCatchIO m => SockAddr -> Routes ThreadId -> m ()
-listenHandlers addr routes = listen addr $ do
+listenHandlers :: MonadCatchIO m => Seconds -> SockAddr -> Routes ThreadId -> m ()
+listenHandlers n addr routes = listen addr $ do
     logInfo "Accepted handler connection"
     receive handle
   where
@@ -61,17 +66,26 @@ listenHandlers addr routes = listen addr $ do
         tid   <- liftIO myThreadId
         queue <- liftIO $ subscribe sub tid routes
 
+        timer <- sendHeartbeats n
+        peer  <- peerName
+        _     <- fork $ heartbeats peer timer
+
         forever $ do
             evt <- liftIO . atomically $ readTQueue queue
             send evt
     handle _       = return ()
 
-listenAgents :: MonadCatchIO m => SockAddr -> m ()
-listenAgents addr = listen addr $ do
+    heartbeats p = receive . heart p
+
+    heart p t Ack = logInfo ("ACK <- " ++ p) >> resetTimer t >> heartbeats p t
+    heart p t _   = logWarn ("UNKNOWN/FIN -> " ++ p) >> cancelTimer t
+
+listenAgents :: MonadCatchIO m => Seconds -> SockAddr -> m ()
+listenAgents n addr = listen addr $ do
     peer <- peerName
     logInfo $ "ACCEPT <- " ++ peer
 
-    sendHeartbeats 10 >>= loop peer
+    sendHeartbeats n >>= loop peer
   where
     loop p = receive . handle p
 

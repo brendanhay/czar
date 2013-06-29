@@ -50,4 +50,5 @@ main = runCommand $ \HandlerOpts{..} _ -> scriptLogging $ do
     loop = receive handle
 
     handle (E evt) = liftIO (print evt) >> loop
+    handle Syn     = send Ack >> loop
     handle _       = return ()
