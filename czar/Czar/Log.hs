@@ -12,7 +12,9 @@
 -- Portability : non-portable (GHC extensions)
 
 module Czar.Log (
-      scriptLogging
+      Priority(..)
+    , scriptLogging
+    , logM
     , logInfoM
     , logInfo
     , logWarn
@@ -23,16 +25,23 @@ import Control.Applicative
 import Control.Concurrent
 import Control.Error
 import Control.Monad.IO.Class
-import Data.Time                 (getCurrentTime, formatTime)
+import Data.Time                        (getCurrentTime, formatTime)
 import System.IO
-import System.Locale             (defaultTimeLocale)
+import System.Locale                    (defaultTimeLocale)
 import System.Log.Formatter
-import System.Log.Handler        (setFormatter)
+import System.Log.Handler               (setFormatter)
 import System.Log.Handler.Simple
-import System.Log.Logger
+import System.Log.Logger         hiding (logM)
 
-scriptLogging :: Script a -> IO a
-scriptLogging action = runScript $ setLogging >> action
+import qualified System.Log.Logger as L
+
+-- FIXME: Added debug logging and setting the log level via cli options
+
+scriptLogging :: Bool -> Script a -> IO a
+scriptLogging verbose action = runScript $ setLogging verbose >> action
+
+logM :: MonadIO m => Priority -> String -> m ()
+logM prio = liftIO . L.logM logName prio
 
 logInfoM :: MonadIO m => (a -> String) -> [a] -> m ()
 logInfoM = withPrefix logInfo
@@ -46,13 +55,15 @@ logError = logMsg errorM
 -- Internal
 --
 
-setLogging :: MonadIO m => m ()
-setLogging = liftIO $ do
+setLogging :: MonadIO m => Bool -> m ()
+setLogging verbose = liftIO $ do
     hSetBuffering stdout LineBuffering
     hSetBuffering stderr LineBuffering
     removeAllHandlers
-    hd <- streamHandler stderr INFO
-    updateGlobalLogger logName (setLevel INFO . setHandlers [formatLog hd])
+    hd <- streamHandler stderr prio
+    updateGlobalLogger logName (setLevel prio . setHandlers [formatLog hd])
+  where
+    prio = if verbose then DEBUG else INFO
 
 logName :: String
 logName = "log"

@@ -49,7 +49,7 @@ subscribe :: Key a => Subscription -> a -> Routes a -> IO (TQueue Event)
 subscribe sub key (Routes ref) = do
     q <- newTQueueIO
     modifyIORef_ ref $ update q
-    logInfo $ "Subscribing " ++ show key ++ " to " ++ show (toList $ S.tags sub)
+    logM INFO $ "Subscribing " ++ show key ++ " to " ++ show (toList $ S.tags sub)
     Table idx _ <- readIORef ref
     print idx
     return $! q

@@ -35,8 +35,12 @@ module Czar.Socket (
     , send
     , sendHeartbeats
     , close
-    , peerName
     , fork
+
+    -- * Logging
+    , logPeer
+    , logPeerTX
+    , logPeerRX
 
     -- * Parser
     , parseAddr
@@ -49,11 +53,13 @@ import Control.Error
 import Control.Monad.CatchIO
 import Control.Monad.IO.Class
 import Control.Monad.Reader
+import Data.List                            (isInfixOf)
 import Network.Socket                hiding (listen, connect, accept, send, close, socket)
 import System.Directory
 import System.FilePath
 import System.IO.Unsafe                     (unsafePerformIO)
 import Text.ParserCombinators.Parsec hiding ((<|>), try)
+import Text.Printf
 
 import Czar.Log
 import Czar.Protocol
@@ -64,7 +70,7 @@ import qualified Text.ParserCombinators.Parsec  as P
 
 defaultAgent, defaultServer, defaultHandler :: String
 defaultAgent   = "unix://czar-agent.sock"
-defaultHandler = "unix://czar-handler.sock"
+defaultHandler = "tcp://127.0.0.1:5556"
 defaultServer  = "tcp://127.0.0.1:5555"
 
 newtype Context m a = Context { runCtx :: ReaderT Socket m a }
@@ -80,7 +86,7 @@ listen addr ctx = bracket open cleanup accept
         Sock.bind sock addr
         Sock.listen sock 5
 
-        logInfo $ "Listening on " ++ show addr
+        logAddr INFO addr "Listening"
 
         return sock
 
@@ -91,16 +97,16 @@ listen addr ctx = bracket open cleanup accept
         runReaderT (runCtx ctx) child
 
 connect :: MonadCatchIO m => SockAddr -> Context m a -> m a
-connect addr ctx = bracket open close (runReaderT (runCtx ctx))
+connect addr ctx = bracket open close $ runReaderT action
   where
     open = liftIO $ do
         sock <- Sock.socket (family addr) Stream Sock.defaultProtocol
 
         Sock.connect sock addr
 
-        logInfo $ "Connected to " ++ show addr
-
         return sock
+
+    action =  runCtx (logPeerTX "Connected") >> runCtx ctx
 
 receive :: MonadCatchIO m => (Payload -> Context m a) -> Context m a
 receive action = do
@@ -118,20 +124,18 @@ sendHeartbeats :: MonadIO m => Seconds -> Context m Timer
 sendHeartbeats n = do
     sock <- socket
     peer <- peerName
+    name <- sockName
 
     liftIO . startTimer n $ do
-        logInfo $ "SYN -> " ++ peer
+        logTX name peer "SYN"
         Sock.sendAll sock $ messagePut Syn
 
         threadSleep n
 
-        logError $ "TIMEOUT/FIN -> " ++ peer
+        logRX peer name "TIMEOUT"
         Sock.sendAll sock $ messagePut Fin
 
         close sock
-
-peerName :: MonadIO m => Context m String
-peerName = socket >>= liftIO . fmap show . getPeerName
 
 fork :: MonadCatchIO m => Context IO a -> Context m (Async a)
 fork ctx = do
@@ -151,9 +155,44 @@ parseAddr str = fmapLT f . hoistEither $ parse addrGeneric "" str
   where
     f = (str ++) . (" " ++) . show
 
+-- FIXME: Tidy this shit up
+
+logPeer prio msg = peerName >>= \peer -> logAddr prio peer msg
+
+logPeerTX msg = do
+    peer <- peerName
+    name <- sockName
+    logTX peer name msg
+
+logPeerRX msg = do
+    peer <- peerName
+    name <- sockName
+    logRX name peer msg
+
+logTX :: MonadIO m => SockAddr -> SockAddr -> String -> m ()
+logTX from to msg =
+    logM DEBUG $ printf "[%s -> %s] %s" (show from) (show to) msg
+
+logRX :: MonadIO m => SockAddr -> SockAddr -> String -> m ()
+logRX to from msg =
+    logM DEBUG $ printf "[%s <- %s] %s" (show to) (show from) msg
+
+logAddr :: MonadIO m => Priority -> SockAddr -> String -> m ()
+logAddr prio addr = logM prio . (peer ++)
+  where
+    peer = case show addr of
+        "" -> ""
+        s  -> printf "[%s] " s
+
 --
 -- Internal
 --
+
+peerName :: MonadIO m => Context m SockAddr
+peerName = socket >>= liftIO . getPeerName
+
+sockName :: MonadIO m => Context m SockAddr
+sockName = socket >>= liftIO . getSocketName
 
 releaseAddr :: MonadIO m => SockAddr -> m ()
 releaseAddr (SockAddrUnix path) = liftIO $ do

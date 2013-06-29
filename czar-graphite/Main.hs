@@ -32,23 +32,26 @@ defineOptions "HandlerOpts" $ do
     stringOption "hdServer" "server" defaultHandler
         "Server for the handler to connect to."
 
+    boolOption "hdVerbose" "verbose" False
+        "Be really loud."
+
 main :: IO ()
-main = runCommand $ \HandlerOpts{..} _ -> scriptLogging $ do
+main = runCommand $ \HandlerOpts{..} _ -> scriptLogging hdVerbose $ do
     addr <- parseAddr hdServer
 
     logInfo "Starting graphite handler ..."
 
     scriptIO . connect addr $ do
         send sub
-        loop
+        continue
   where
     sub = Subscription
         "graphite"
-        (Just "Graphite Handler")
+        (Just "Graphite Yieldr")
         (Seq.fromList [Tag "*"])
 
-    loop = receive handle
+    continue = receive yield
 
-    handle (E evt) = liftIO (print evt) >> loop
-    handle Syn     = send Ack >> loop
-    handle _       = return ()
+    yield (E evt) = liftIO (print evt) >> continue
+    yield Syn     = logPeerRX "SYN" >> send Ack >> continue
+    yield _       = logPeerRX "FIN" >> return ()

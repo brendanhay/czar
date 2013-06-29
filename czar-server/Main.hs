@@ -14,7 +14,7 @@
 
 module Main (main) where
 
-import Control.Concurrent
+import Control.Concurrent      (ThreadId, myThreadId)
 import Control.Concurrent.Race
 import Control.Concurrent.STM
 import Control.Concurrent.Timer
@@ -39,11 +39,14 @@ defineOptions "ServerOpts" $ do
     stringOption "srvHandlers" "publish" defaultHandler
         ""
 
-    integerOption "srvTimeout" "heartbeat" 30
+    integerOption "srvTimeout" "heartbeat" 5
         ""
 
+    boolOption "srvVerbose" "verbose" False
+        "Be really loud."
+
 main :: IO ()
-main = runCommand $ \ServerOpts{..} _ -> scriptLogging $ do
+main = runCommand $ \ServerOpts{..} _ -> scriptLogging srvVerbose $ do
     hds <- parseAddr srvHandlers
     lst <- parseAddr srvListen
 
@@ -59,36 +62,31 @@ main = runCommand $ \ServerOpts{..} _ -> scriptLogging $ do
 
 listenHandlers :: MonadCatchIO m => Seconds -> SockAddr -> Routes ThreadId -> m ()
 listenHandlers n addr routes = listen addr $ do
-    logInfo "Accepted handler connection"
-    receive handle
+    logPeer INFO "Accepted"
+    receive yield
   where
-    handle (S sub) = do
+    yield (S sub) = do
         tid   <- liftIO myThreadId
         queue <- liftIO $ subscribe sub tid routes
-
-        timer <- sendHeartbeats n
-        peer  <- peerName
-        _     <- fork $ heartbeats peer timer
+        _     <- sendHeartbeats n >>= fork . keepalive
 
         forever $ do
             evt <- liftIO . atomically $ readTQueue queue
             send evt
-    handle _       = return ()
+    yield _       = return ()
 
-    heartbeats p = receive . heart p
+    keepalive = receive . heartbeat
 
-    heart p t Ack = logInfo ("ACK <- " ++ p) >> resetTimer t >> heartbeats p t
-    heart p t _   = logWarn ("UNKNOWN/FIN -> " ++ p) >> cancelTimer t
+    heartbeat t Ack = logPeerRX "ACK" >> resetTimer t >> keepalive t
+    heartbeat t _   = logPeerRX "FIN" >> cancelTimer t
 
 listenAgents :: MonadCatchIO m => Seconds -> SockAddr -> m ()
 listenAgents n addr = listen addr $ do
-    peer <- peerName
-    logInfo $ "ACCEPT <- " ++ peer
-
-    sendHeartbeats n >>= loop peer
+    logPeer INFO "ACCEPT"
+    sendHeartbeats n >>= continue
   where
-    loop p = receive . handle p
+    continue = receive . yield
 
-    handle p t (E evt) = resetTimer t >> liftIO (print evt) >> loop p t
-    handle p t Ack     = logInfo ("ACK <- " ++ p) >> resetTimer t >> loop p t
-    handle p t _       = logWarn ("UNKNOWN/FIN -> " ++ p) >> cancelTimer t
+    yield t (E evt) = resetTimer t >> liftIO (print evt) >> continue t
+    yield t Ack     = logPeerRX "ACK" >> resetTimer t >> continue t
+    yield t _       = logPeerRX "FIN" >> cancelTimer t
