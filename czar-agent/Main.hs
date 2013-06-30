@@ -17,6 +17,7 @@
 
 module Main (main) where
 
+import           Control.Concurrent           hiding (yield)
 import           Control.Concurrent.Race
 import           Control.Concurrent.STM
 import           Control.Error
@@ -115,16 +116,14 @@ runConnect ConnOpts{..} = do
 
 connectServer :: (Functor m, MonadCatchIO m) => SockAddr -> TQueue Event -> m ()
 connectServer addr queue = connect addr $ do
-    fork $ do
-        evt <- liftIO . atomically $ readTQueue queue
-        send evt
+    child <- fork $ liftIO (atomically $ readTQueue queue) >>= send
 
-    keepalive
+    keepalive `finally` liftIO (killThread child)
   where
-    keepalive = receive heartbeat
+    keepalive = receive syn
 
-    heartbeat Syn = logPeerRX "SYN" >> send Ack >> logPeerTX "ACK" >> keepalive
-    heartbeat _   = logPeerRX "FIN"
+    syn Syn = logPeerRX "SYN" >> send Ack >> logPeerTX "ACK" >> keepalive
+    syn _   = logPeerRX "FIN"
 
 listenAgents :: MonadCatchIO m => SockAddr -> TQueue Event -> m ()
 listenAgents addr queue = listen addr continue
@@ -133,3 +132,7 @@ listenAgents addr queue = listen addr continue
 
     yield (E evt) = logPeerRX "EVT" >> liftIO (atomically $ writeTQueue queue evt) >> continue
     yield _       = logPeerRX "FIN"
+
+healthCheck = do
+    a <- async
+    link a
