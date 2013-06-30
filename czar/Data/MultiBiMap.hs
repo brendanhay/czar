@@ -13,9 +13,9 @@
 -- Stability   : experimental
 -- Portability : non-portable (GHC extensions)
 
-module Data.MultiBiMap (
+module Data.MultiBiMap
     -- * Opaque Data Type
-      MultiBiMap
+    ( MultiBiMap
 
     -- * Constructor
     , empty
@@ -27,10 +27,9 @@ module Data.MultiBiMap (
     , inverse
     ) where
 
-import Data.Hashable
-import Data.HashMap.Strict        (HashMap)
-import Data.HashSet               (HashSet)
-import Prelude             hiding (lookup)
+import           Data.Hashable
+import           Data.HashSet        (HashSet)
+import           Prelude             hiding (lookup)
 
 import qualified Data.HashMap.Strict as Map
 import qualified Data.HashSet        as Set

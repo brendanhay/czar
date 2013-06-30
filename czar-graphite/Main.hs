@@ -16,17 +16,17 @@
 
 module Main (main) where
 
-import Control.Error
-import Control.Monad.IO.Class
-import Options
+import           Control.Error
+import           Control.Monad.IO.Class
+import           Options
 
-import Czar.Internal.Protocol.Subscription
-import Czar.Internal.Protocol.Tag
-import Czar.Log
-import Czar.Protocol
-import Czar.Socket
+import qualified Data.Sequence                       as Seq
 
-import qualified Data.Sequence as Seq
+import           Czar.Internal.Protocol.Subscription
+import           Czar.Internal.Protocol.Tag
+import           Czar.Log
+import           Czar.Protocol
+import           Czar.Socket
 
 defineOptions "HandlerOpts" $ do
     stringOption "hdServer" "server" defaultHandler

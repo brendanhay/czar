@@ -14,20 +14,20 @@
 
 module Main (main) where
 
-import Control.Concurrent       (ThreadId, myThreadId)
-import Control.Concurrent.STM
-import Control.Error
-import Control.Monad.CatchIO
-import Control.Monad.IO.Class
-import Network.Socket           (SockAddr)
-import Options
+import           Control.Concurrent       (ThreadId, myThreadId)
+import           Control.Concurrent.STM
+import           Control.Error
+import           Control.Monad.CatchIO
+import           Control.Monad.IO.Class
+import           Network.Socket           (SockAddr)
+import           Options
 
-import Control.Concurrent.Race
-import Control.Concurrent.Timer (Seconds)
-import Czar.Log
-import Czar.Protocol
-import Czar.Server.Routing
-import Czar.Socket
+import           Control.Concurrent.Race
+import           Control.Concurrent.Timer (Seconds)
+import           Czar.Log
+import           Czar.Protocol
+import           Czar.Server.Routing
+import           Czar.Socket
 
 import qualified Control.Concurrent.Timer as Timer
 
@@ -67,12 +67,11 @@ listenHandlers n addr routes = listen addr $ receive yield `finally` logPeerRX "
     yield (S sub) = do
         tid   <- liftIO myThreadId
 
--- while double fin on disconnect?
-
         logPeerInfo $ "subscribing to " ++ formatTags sub
 
         queue <- liftIO $ subscribe sub tid routes
 
+         -- publish events in forked child
         fork $ do
             evt <- liftIO . atomically $ readTQueue queue
             send evt

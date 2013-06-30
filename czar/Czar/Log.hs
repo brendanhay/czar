@@ -11,8 +11,8 @@
 -- Stability   : experimental
 -- Portability : non-portable (GHC extensions)
 
-module Czar.Log (
-      Priority(..)
+module Czar.Log
+    ( Priority(..)
     , scriptLogging
     , logM
     , logInfoM
@@ -21,20 +21,20 @@ module Czar.Log (
     , logError
     ) where
 
-import Control.Applicative
-import Control.Concurrent
-import Control.Error
-import Control.Monad.IO.Class
-import Data.Time                        (getCurrentTime, formatTime)
-import System.IO
-import System.Locale                    (defaultTimeLocale)
-import System.Log.Handler               (setFormatter)
-import System.Log.Handler.Simple
-import System.Log.Logger         hiding (logM)
-import System.Posix.Process             (getProcessID)
-import Text.Printf
+import           Control.Applicative
+import           Control.Concurrent
+import           Control.Error
+import           Control.Monad.IO.Class
+import           Data.Time                 (getCurrentTime, formatTime)
+import           System.IO
+import           System.Locale             (defaultTimeLocale)
+import           System.Log.Handler        (setFormatter)
+import           System.Log.Handler.Simple
+import           System.Log.Logger         hiding (logM)
+import           System.Posix.Process      (getProcessID)
+import           Text.Printf
 
-import qualified System.Log.Logger as L
+import qualified System.Log.Logger         as L
 
 -- FIXME: Added debug logging and setting the log level via cli options
 

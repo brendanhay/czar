@@ -12,20 +12,28 @@
 -- Stability   : experimental
 -- Portability : non-portable (GHC extensions)
 
-module Czar.Server.Routing where
+module Czar.Server.Routing
+    -- * Constructor
+    ( emptyRoutes
 
-import Control.Applicative
-import Control.Concurrent.STM
-import Control.Monad.IO.Class
-import Data.Hashable
-import Data.HashMap.Strict    (HashMap)
-import Data.IORef
-import Data.Foldable          (toList)
+    -- * Operations
+    , subscribe
+    , unsubscribe
+    , notify
+    ) where
 
-import Czar.Protocol   (Event, Subscription, Tag)
-import Data.MultiBiMap (MultiBiMap)
+import           Control.Applicative
+import           Control.Concurrent.STM
+import           Control.Monad.IO.Class
+import           Data.Hashable
+import           Data.HashMap.Strict                 (HashMap)
+import           Data.IORef
+import           Data.Foldable                       (toList)
 
-import qualified Data.HashMap.Strict as Queues
+import qualified Data.HashMap.Strict                 as Queues
+
+import           Czar.Protocol                       (Event, Subscription, Tag)
+import           Data.MultiBiMap                     (MultiBiMap)
 
 import qualified Czar.Internal.Protocol.Event        as E
 import qualified Czar.Internal.Protocol.Subscription as S
@@ -76,6 +84,10 @@ notify evt (Routes ref) = do
   where
     push (Just q) = liftIO . atomically $ writeTQueue q evt
     push Nothing  = return ()
+
+--
+-- Internal
+--
 
 modifyIORef_ :: IORef a -> (a -> a) -> IO ()
 modifyIORef_ ref f = atomicModifyIORef' ref $ \x -> (f x, ())

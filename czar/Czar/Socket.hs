@@ -17,9 +17,9 @@
 -- Stability   : experimental
 -- Portability : non-portable (GHC extensions)
 
-module Czar.Socket (
+module Czar.Socket
     -- * ReaderT Context
-      Context
+    ( Context
 
     -- * Default Addresses
     , defaultAgent
@@ -46,28 +46,28 @@ module Czar.Socket (
     , parseAddr
     ) where
 
-import Control.Applicative
-import Control.Concurrent
-import Control.Error
-import Control.Monad.CatchIO
-import Control.Monad.IO.Class
-import Control.Monad.Reader
-import Network.Socket                hiding (listen, connect, accept, send, close, socket)
-import System.Directory
-import System.FilePath
-import System.IO.Unsafe                     (unsafePerformIO)
-import Text.ParserCombinators.Parsec hiding ((<|>), try)
-import Text.Printf
-
-import Control.Concurrent.Timer (Seconds, Timer)
-import Czar.Log
-import Czar.Protocol
+import           Control.Applicative
+import           Control.Concurrent
+import           Control.Error
+import           Control.Monad.CatchIO
+import           Control.Monad.IO.Class
+import           Control.Monad.Reader
+import           Network.Socket                 hiding (listen, connect, accept, send, close, socket)
+import           System.Directory
+import           System.FilePath
+import           System.IO.Unsafe               (unsafePerformIO)
+import           Text.ParserCombinators.Parsec  hiding ((<|>), try)
+import           Text.Printf
 
 import qualified Network.Socket                 as Sock hiding (recv)
 import qualified Network.Socket.ByteString.Lazy as Sock
 import qualified Text.ParserCombinators.Parsec  as P
 
-import qualified Control.Concurrent.Timer as Timer
+import           Control.Concurrent.Timer       (Seconds, Timer)
+import           Czar.Log
+import           Czar.Protocol
+
+import qualified Control.Concurrent.Timer       as Timer
 
 defaultAgent, defaultServer, defaultHandler :: String
 defaultAgent   = "unix://czar-agent.sock"

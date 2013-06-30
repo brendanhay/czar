@@ -13,36 +13,36 @@
 -- Stability   : experimental
 -- Portability : non-portable (GHC extensions)
 
-module Czar.Agent.Check (
-      Check(..)
+module Czar.Agent.Check
+    ( Check(..)
     , loadChecks
     , forkChecks
     ) where
 
-import Prelude hiding (lookup)
+import           Prelude                      hiding (lookup)
 
-import Control.Applicative      ((<$>), (<*>))
-import Control.Concurrent
-import Control.Concurrent.Async
-import Control.Concurrent.STM
-import Control.Monad
-import Control.Monad.IO.Class
-import Data.Configurator
-import Data.Configurator.Types
-import Data.List                (isSuffixOf)
-import Data.Maybe
-import Data.Monoid
-import Data.Text                (Text)
-import System.Directory
-import System.FilePath
+import           Control.Applicative          ((<$>), (<*>))
+import           Control.Concurrent
+import           Control.Concurrent.Async
+import           Control.Concurrent.STM
+import           Control.Monad
+import           Control.Monad.IO.Class
+import           Data.Configurator
+import           Data.Configurator.Types
+import           Data.List                    (isSuffixOf)
+import           Data.Maybe
+import           Data.Monoid
+import           Data.Text                    (Text)
+import           System.Directory
+import           System.FilePath
 
-import Czar.Protocol
+import qualified Data.HashMap.Lazy            as H
+import qualified Data.Sequence                as Seq
+import qualified Data.Text                    as T
+import qualified Data.Text.Lazy.Encoding      as LE
+import qualified Data.Text.Lazy               as LT
 
-import qualified Data.HashMap.Lazy       as H
-import qualified Data.Sequence           as Seq
-import qualified Data.Text               as T
-import qualified Data.Text.Lazy.Encoding as LE
-import qualified Data.Text.Lazy          as LT
+import           Czar.Protocol
 
 import qualified Czar.Internal.Protocol.Event as E
 
