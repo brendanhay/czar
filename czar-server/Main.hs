@@ -31,8 +31,6 @@ import           Czar.Socket
 
 import qualified Control.Concurrent.Timer as Timer
 
--- FIXME: Add a --force command to overwrite unix sockets if possible
-
 defineOptions "ServerOpts" $ do
     stringOption "srvListen" "listen" defaultServer
         ""
