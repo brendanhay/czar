@@ -52,4 +52,4 @@ main = runCommand $ \HandlerOpts{..} _ -> scriptLogging hdVerbose $ do
 
     yield (E evt) = liftIO (print evt) >> continue
     yield Syn     = logPeerRX "SYN" >> send Ack >> logPeerTX "ACK" >> continue
-    yield _       = logPeerRX "FIN" >> return ()
+    yield _       = logPeerRX "FIN"
