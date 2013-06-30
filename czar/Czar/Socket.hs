@@ -33,7 +33,7 @@ module Czar.Socket
     -- * Context Operations
     , receive
     , send
-    , sendHeartbeats
+    , heartbeat
     , close
     , fork
 
@@ -125,22 +125,22 @@ send msg = do
     sock <- socket
     liftIO . Sock.sendAll sock $ messagePut msg
 
-sendHeartbeats :: MonadIO m => Seconds -> Context m Timer
-sendHeartbeats n = do
+heartbeat :: MonadIO m => Seconds -> IO () -> Context m Timer
+heartbeat n cleanup = do
     sock <- socket
     peer <- peerName
     name <- sockName
 
     Timer.start n
         (logTX name peer "SYN" >> send' sock Syn)
-        (logRX peer name "TIMEOUT" >> send' sock Fin >> close sock)
+        (finally
+            (logRX peer name "TIMEOUT" >> send' sock Fin)
+            (close sock >> cleanup))
   where
     send' sock = Sock.sendAll sock . messagePut
 
-fork :: (Functor m, MonadCatchIO m) => Context IO () -> Context m ()
-fork ctx = do
-    sock <- socket
-    void . liftIO . forkIO $ runReaderT (runCtx ctx) sock
+fork :: (Functor m, MonadCatchIO m) => Context IO () -> Context m ThreadId
+fork ctx = socket >>= liftIO . forkIO . runReaderT (runCtx ctx)
 
 socket :: Monad m => Context m Socket
 socket = ask
@@ -182,7 +182,7 @@ logAddr prio addr = logM prio . (peer ++)
   where
     peer = case show addr of
         "" -> ""
-        s  -> printf "[%s] " s
+        s  -> printf "%s " s
 
 --
 -- Internal
