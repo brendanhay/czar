@@ -47,11 +47,11 @@ import qualified Data.Text.Lazy          as LT
 import qualified Czar.Internal.Protocol.Event as E
 
 data Check = Check
-    { chkName     :: Text
-    , chkDesc     :: Maybe Text
-    , chkCommand  :: Text
-    , chkInterval :: Int
-    , chkTags     :: [Text]
+    { chkName     :: !Text
+    , chkDesc     :: !(Maybe Text)
+    , chkCommand  :: !Text
+    , chkInterval :: !Int
+    , chkTags     :: ![Text]
     } deriving (Eq, Ord, Show)
 
 loadChecks :: MonadIO m => [FilePath] -> m [Check]

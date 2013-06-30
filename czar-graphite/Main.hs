@@ -39,11 +39,9 @@ main :: IO ()
 main = runCommand $ \HandlerOpts{..} _ -> scriptLogging hdVerbose $ do
     addr <- parseAddr hdServer
 
-    logInfo "Starting graphite handler ..."
+    logInfo "starting graphite handler ..."
 
-    scriptIO . connect addr $ do
-        send sub
-        continue
+    scriptIO . connect addr $ send sub >> continue
   where
     sub = Subscription
         "graphite"
@@ -53,5 +51,5 @@ main = runCommand $ \HandlerOpts{..} _ -> scriptLogging hdVerbose $ do
     continue = receive yield
 
     yield (E evt) = liftIO (print evt) >> continue
-    yield Syn     = logPeerRX "SYN" >> send Ack >> continue
+    yield Syn     = logPeerRX "SYN" >> send Ack >> logPeerTX "ACK" >> continue
     yield _       = logPeerRX "FIN" >> return ()

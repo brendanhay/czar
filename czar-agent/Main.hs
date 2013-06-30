@@ -20,7 +20,6 @@ module Main (main) where
 import Control.Concurrent.Race
 import Control.Concurrent.STM
 import Control.Error
-import Control.Monad
 import Control.Monad.CatchIO
 import Control.Monad.IO.Class
 import Network.BSD              hiding (hostName)
@@ -37,7 +36,9 @@ import qualified Data.Text     as T
 
 import qualified Czar.Internal.Protocol.Event as E
 
-defineOptions "MainOpts" $ return ()
+defineOptions "MainOpts" $
+    boolOption "mainVerbose" "verbose" False
+        "Be really loud."
 
 defineOptions "SendOpts" $ do
     stringOption "sendAgent" "connect" defaultAgent
@@ -72,17 +73,17 @@ main = runSubcommand
     ]
   where
     cmd name action = subcommand name $
-        \(_ :: MainOpts) opts _ -> scriptLogging $ action opts
+        \MainOpts{..} opts _ -> scriptLogging mainVerbose $ action opts
 
 runSend :: SendOpts -> Script ()
 runSend SendOpts{..} = do
     addr <- parseAddr sendAgent
 
-    logInfo "Connecting to agent ..."
+    logInfo "connecting to agent ..."
 
     scriptIO . connect addr $ do
         send $ E.Event 0 "hi!" "key" Nothing (Seq.fromList []) (Seq.fromList []) (Seq.fromList [])
-        logInfo $ "Payload sent to " ++ show addr
+        logInfo $ "payload sent to " ++ show addr
 
     logInfo "Done."
 
@@ -95,16 +96,16 @@ runConnect ConnOpts{..} = do
     srv  <- parseAddr connServer
     lst  <- parseAddr connListen
 
-    logInfo $ "Identifying host as " ++ host
-    logInfo "Starting agent ..."
+    logInfo $ "identifying host as " ++ host
+    logInfo "starting agent ..."
 
     scriptIO $ do
-        logInfoM ("Loading checks from " ++) connChecks
+        logInfoM ("loading checks from " ++) connChecks
 
         checks <- loadChecks connChecks
         queue  <- atomically newTQueue
 
-        logInfoM (("Adding " ++) . T.unpack . chkName) checks
+        logInfoM (("adding " ++) . T.unpack . chkName) checks
 
         forkChecks connSplay queue checks
 
@@ -112,27 +113,23 @@ runConnect ConnOpts{..} = do
             (connectServer srv queue)
             (listenAgents lst queue)
 
-connectServer :: MonadCatchIO m => SockAddr -> TQueue Event -> m ()
+connectServer :: (Functor m, MonadCatchIO m) => SockAddr -> TQueue Event -> m ()
 connectServer addr queue = connect addr $ do
-    peer <- peerName
-    _    <- fork $ heartbeats peer
-
-    forever $ do
+    fork $ do
         evt <- liftIO . atomically $ readTQueue queue
         send evt
-        logInfo $ "Sent " ++ show evt ++ " to " ++ show addr
-  where
-    heartbeats = receive . handle
 
-    handle p Syn = logInfo ("SYN <- " ++ p) >> send Ack >> logInfo ("ACK ->" ++ p) >> heartbeats p
-    handle p _   = logWarn ("UNKNOWN/FIN -> " ++ p) >> return ()
+    keepalive
+  where
+    keepalive = receive heartbeat
+
+    heartbeat Syn = logPeerRX "SYN" >> send Ack >> logPeerTX "ACK" >> keepalive
+    heartbeat _   = logPeerRX "FIN"
 
 listenAgents :: MonadCatchIO m => SockAddr -> TQueue Event -> m ()
-listenAgents addr queue = listen addr $ do
-    logInfo "Accepted agent connection"
-    loop
+listenAgents addr queue = listen addr continue
   where
-    loop = receive handle
+    continue = receive yield
 
-    handle (E evt) = liftIO (atomically $ writeTQueue queue evt) >> loop
-    handle _       = return ()
+    yield (E evt) = logPeerRX "EVT" >> liftIO (atomically $ writeTQueue queue evt) >> continue
+    yield _       = logPeerRX "FIN"

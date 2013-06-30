@@ -38,7 +38,7 @@ module Czar.Socket (
     , fork
 
     -- * Logging
-    , logPeer
+    , logPeerInfo
     , logPeerTX
     , logPeerRX
 
@@ -47,13 +47,11 @@ module Czar.Socket (
     ) where
 
 import Control.Applicative
-import Control.Concurrent.Async
-import Control.Concurrent.Timer
+import Control.Concurrent
 import Control.Error
 import Control.Monad.CatchIO
 import Control.Monad.IO.Class
 import Control.Monad.Reader
-import Data.List                            (isInfixOf)
 import Network.Socket                hiding (listen, connect, accept, send, close, socket)
 import System.Directory
 import System.FilePath
@@ -61,6 +59,7 @@ import System.IO.Unsafe                     (unsafePerformIO)
 import Text.ParserCombinators.Parsec hiding ((<|>), try)
 import Text.Printf
 
+import Control.Concurrent.Timer (Seconds, Timer)
 import Czar.Log
 import Czar.Protocol
 
@@ -68,15 +67,17 @@ import qualified Network.Socket                 as Sock hiding (recv)
 import qualified Network.Socket.ByteString.Lazy as Sock
 import qualified Text.ParserCombinators.Parsec  as P
 
+import qualified Control.Concurrent.Timer as Timer
+
 defaultAgent, defaultServer, defaultHandler :: String
 defaultAgent   = "unix://czar-agent.sock"
 defaultHandler = "tcp://127.0.0.1:5556"
 defaultServer  = "tcp://127.0.0.1:5555"
 
 newtype Context m a = Context { runCtx :: ReaderT Socket m a }
-    deriving (Monad, MonadCatchIO, MonadIO, MonadReader Socket)
+    deriving (Functor, Monad, MonadCatchIO, MonadIO, MonadReader Socket)
 
-listen :: MonadCatchIO m => SockAddr -> Context m a -> m a
+listen :: MonadCatchIO m => SockAddr -> Context IO () -> m a
 listen addr ctx = bracket open cleanup accept
   where
     open = liftIO $ do
@@ -86,15 +87,19 @@ listen addr ctx = bracket open cleanup accept
         Sock.bind sock addr
         Sock.listen sock 5
 
-        logAddr INFO addr "Listening"
+        logAddr INFO addr "listening"
 
         return sock
 
     cleanup sock = close sock >> releaseAddr addr
 
-    accept sock = forever $ do
-        (child, _) <- liftIO $ Sock.accept sock
-        runReaderT (runCtx ctx) child
+    accept sock = forever . liftIO $ do
+        (child, _) <- Sock.accept sock
+        caddr      <- getPeerName child
+
+        logAddr INFO caddr "accepted"
+
+        void . forkIO $ runReaderT (runCtx ctx) child
 
 connect :: MonadCatchIO m => SockAddr -> Context m a -> m a
 connect addr ctx = bracket open close $ runReaderT action
@@ -106,7 +111,7 @@ connect addr ctx = bracket open close $ runReaderT action
 
         return sock
 
-    action =  runCtx (logPeerTX "Connected") >> runCtx ctx
+    action =  runCtx (logPeerTX "connected") >> runCtx ctx
 
 receive :: MonadCatchIO m => (Payload -> Context m a) -> Context m a
 receive action = do
@@ -126,21 +131,16 @@ sendHeartbeats n = do
     peer <- peerName
     name <- sockName
 
-    liftIO . startTimer n $ do
-        logTX name peer "SYN"
-        Sock.sendAll sock $ messagePut Syn
+    Timer.start n
+        (logTX name peer "SYN" >> send' sock Syn)
+        (logRX peer name "TIMEOUT" >> send' sock Fin >> close sock)
+  where
+    send' sock = Sock.sendAll sock . messagePut
 
-        threadSleep n
-
-        logRX peer name "TIMEOUT"
-        Sock.sendAll sock $ messagePut Fin
-
-        close sock
-
-fork :: MonadCatchIO m => Context IO a -> Context m (Async a)
+fork :: (Functor m, MonadCatchIO m) => Context IO () -> Context m ()
 fork ctx = do
     sock <- socket
-    liftIO . async $ runReaderT (runCtx ctx) sock
+    void . liftIO . forkIO $ runReaderT (runCtx ctx) sock
 
 socket :: Monad m => Context m Socket
 socket = ask
@@ -157,12 +157,12 @@ parseAddr str = fmapLT f . hoistEither $ parse addrGeneric "" str
 
 -- FIXME: Tidy this shit up
 
-logPeer prio msg = peerName >>= \peer -> logAddr prio peer msg
+logPeerInfo msg = peerName >>= \peer -> logAddr INFO peer msg
 
 logPeerTX msg = do
     peer <- peerName
     name <- sockName
-    logTX peer name msg
+    logTX name peer msg
 
 logPeerRX msg = do
     peer <- peerName
@@ -171,11 +171,11 @@ logPeerRX msg = do
 
 logTX :: MonadIO m => SockAddr -> SockAddr -> String -> m ()
 logTX from to msg =
-    logM DEBUG $ printf "[%s -> %s] %s" (show from) (show to) msg
+    logM DEBUG $ printf "%s -> %s %s" (show from) (show to) msg
 
 logRX :: MonadIO m => SockAddr -> SockAddr -> String -> m ()
 logRX to from msg =
-    logM DEBUG $ printf "[%s <- %s] %s" (show to) (show from) msg
+    logM DEBUG $ printf "%s <- %s %s" (show to) (show from) msg
 
 logAddr :: MonadIO m => Priority -> SockAddr -> String -> m ()
 logAddr prio addr = logM prio . (peer ++)

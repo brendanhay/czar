@@ -14,21 +14,22 @@
 
 module Main (main) where
 
-import Control.Concurrent      (ThreadId, myThreadId)
-import Control.Concurrent.Race
+import Control.Concurrent       (ThreadId, myThreadId)
 import Control.Concurrent.STM
-import Control.Concurrent.Timer
 import Control.Error
-import Control.Monad
 import Control.Monad.CatchIO
 import Control.Monad.IO.Class
 import Network.Socket           (SockAddr)
 import Options
 
+import Control.Concurrent.Race
+import Control.Concurrent.Timer (Seconds)
 import Czar.Log
 import Czar.Protocol
 import Czar.Server.Routing
 import Czar.Socket
+
+import qualified Control.Concurrent.Timer as Timer
 
 -- FIXME: Add a --force command to overwrite unix sockets if possible
 
@@ -39,7 +40,7 @@ defineOptions "ServerOpts" $ do
     stringOption "srvHandlers" "publish" defaultHandler
         ""
 
-    integerOption "srvTimeout" "heartbeat" 5
+    integerOption "srvHeartbeat" "heartbeat" 5
         ""
 
     boolOption "srvVerbose" "verbose" False
@@ -50,9 +51,9 @@ main = runCommand $ \ServerOpts{..} _ -> scriptLogging srvVerbose $ do
     hds <- parseAddr srvHandlers
     lst <- parseAddr srvListen
 
-    logInfo "Starting server ..."
+    logInfo "starting server ..."
 
-    let n = fromInteger srvTimeout
+    let n = fromInteger srvHeartbeat
 
     scriptIO $ do
         routes <- liftIO emptyRoutes
@@ -61,32 +62,71 @@ main = runCommand $ \ServerOpts{..} _ -> scriptLogging srvVerbose $ do
             (listenAgents n lst)
 
 listenHandlers :: MonadCatchIO m => Seconds -> SockAddr -> Routes ThreadId -> m ()
-listenHandlers n addr routes = listen addr $ do
-    logPeer INFO "Accepted"
-    receive yield
+listenHandlers n addr routes = listen addr $ receive yield `finally` logPeerRX "FIN"
   where
     yield (S sub) = do
         tid   <- liftIO myThreadId
-        queue <- liftIO $ subscribe sub tid routes
-        _     <- sendHeartbeats n >>= fork . keepalive
 
-        forever $ do
+-- while double fin on disconnect?
+
+        logPeerInfo $ "subscribing to " ++ formatTags sub
+
+        queue <- liftIO $ subscribe sub tid routes
+
+        fork $ do
             evt <- liftIO . atomically $ readTQueue queue
             send evt
-    yield _       = return ()
+
+        -- keepalive in the main thread
+        sendHeartbeats n >>= keepalive
+
+    yield _ = return ()
 
     keepalive = receive . heartbeat
 
-    heartbeat t Ack = logPeerRX "ACK" >> resetTimer t >> keepalive t
-    heartbeat t _   = logPeerRX "FIN" >> cancelTimer t
+    heartbeat t Ack = logPeerRX "ACK" >> Timer.reset t >> keepalive t
+    heartbeat t _   = logPeerRX "FIN" >> Timer.cancel t
 
 listenAgents :: MonadCatchIO m => Seconds -> SockAddr -> m ()
-listenAgents n addr = listen addr $ do
-    logPeer INFO "ACCEPT"
-    sendHeartbeats n >>= continue
+listenAgents n addr = listen addr $ sendHeartbeats n >>= continue
   where
     continue = receive . yield
 
-    yield t (E evt) = resetTimer t >> liftIO (print evt) >> continue t
-    yield t Ack     = logPeerRX "ACK" >> resetTimer t >> continue t
-    yield t _       = logPeerRX "FIN" >> cancelTimer t
+    yield t (E evt) = Timer.reset t >> liftIO (print evt) >> continue t
+    yield t Ack     = logPeerRX "ACK" >> Timer.reset t >> continue t
+    yield t _       = logPeerRX "FIN" >> Timer.cancel t
+
+
+-- Each socket type flips between send and receive depending on a prior state
+
+-- AgentServer Push Pong
+--  Handshakes with ()
+--  Sends: Few ACK, Many EVT
+--  Receives: SYN
+
+-- ServerAgent Pull Ping
+--  Handshakes with ()
+--  Sends: SYN
+--  Receives: ACK | EVT
+
+
+-- AgentAgent Push Pong
+--  Handshakes with ()
+--  Sends: Few ACK, Many EVT
+--  Receives: SYN
+
+-- AgentAgent Pull Ping
+--  Handshakes with ()
+--  Sends: SYN
+--  Receives ACK | EVT
+
+
+-- ServerHandler Push Ping
+--  Handshakes with SUB
+--  Sends: SYN | EVT
+--  Receives: ACK
+
+-- HandlerServer Pull Pong
+--  Handshakes with Sub
+--  Sends: ACK
+--  Receives: SYN | EVT

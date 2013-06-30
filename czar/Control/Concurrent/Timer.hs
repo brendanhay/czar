@@ -1,7 +1,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 -- |
--- Module      : Control.Concurrent.Timer
+-- Module      : Control.Concurrent.MTimer
 -- Copyright   : (c) 2013 Brendan Hay <brendan.g.hay@gmail.com.com>
 -- License     : This Source Code Form is subject to the terms of
 --               the Mozilla Public License, v. 2.0.
@@ -11,48 +11,32 @@
 -- Stability   : experimental
 -- Portability : non-portable (GHC extensions)
 
-module Control.Concurrent.Timer (
-      Seconds
-    , Timer
-
-    , threadSleep
-    , startTimer
-    , resetTimer
-    , cancelTimer
-    ) where
+module Control.Concurrent.Timer where
 
 import Control.Concurrent
-import Control.Concurrent.Async
 import Control.Monad.IO.Class
+import Data.IORef
 
 newtype Seconds = Seconds Int deriving (Eq, Ord, Num, Real)
 
-data Timer = Timer (MVar Ref)
+data Timer = Timer !(IORef Bool) !ThreadId
 
-data Ref = Ref Seconds (IO ()) (Async ())
-
-threadSleep :: MonadIO m => Seconds -> m ()
-threadSleep (Seconds n) = liftIO . threadDelay $ n * 1000000
-
-startTimer :: (Functor m, MonadIO m) => Seconds -> IO () -> m Timer
-startTimer n action = createRef n action >>= fmap Timer . liftIO . newMVar
-
-resetTimer :: MonadIO m => Timer -> m ()
-resetTimer (Timer var) = liftIO $ modifyMVar_ var reset
+start :: MonadIO m => Seconds -> IO () -> IO () -> m Timer
+start (Seconds n) action cleanup = liftIO $ do
+    ref <- newIORef False
+    tid <- forkIO $ run ref
+    return $! Timer ref tid
   where
-    reset (Ref n action ref) = cancel ref >> createRef n action
+    run ref = do
+        p <- action >> threadDelay delay >> readIORef ref
+        if p
+         then run ref
+         else cleanup
 
-cancelTimer :: MonadIO m => Timer -> m ()
-cancelTimer (Timer var) = liftIO $ do
-    (Ref _ _ ref) <- readMVar var
-    cancel ref
+    delay = n * 1000000
 
---
--- Internal
---
+reset :: MonadIO m => Timer -> m ()
+reset (Timer ref _) = liftIO $ atomicWriteIORef ref True
 
-createRef :: MonadIO m => Seconds -> IO () -> m Ref
-createRef n action = liftIO $ do
-    ref <- async $ threadSleep n >> action
-    return $! Ref n action ref
-
+cancel :: MonadIO m => Timer -> m ()
+cancel (Timer _ tid) = liftIO $ killThread tid

@@ -28,10 +28,11 @@ import Control.Monad.IO.Class
 import Data.Time                        (getCurrentTime, formatTime)
 import System.IO
 import System.Locale                    (defaultTimeLocale)
-import System.Log.Formatter
 import System.Log.Handler               (setFormatter)
 import System.Log.Handler.Simple
 import System.Log.Logger         hiding (logM)
+import System.Posix.Process             (getProcessID)
+import Text.Printf
 
 import qualified System.Log.Logger as L
 
@@ -59,8 +60,11 @@ setLogging :: MonadIO m => Bool -> m ()
 setLogging verbose = liftIO $ do
     hSetBuffering stdout LineBuffering
     hSetBuffering stderr LineBuffering
+
     removeAllHandlers
+
     hd <- streamHandler stderr prio
+
     updateGlobalLogger logName (setLevel prio . setHandlers [formatLog hd])
   where
     prio = if verbose then DEBUG else INFO
@@ -75,8 +79,13 @@ withPrefix :: MonadIO m => (String -> m ()) -> (a -> String) -> [a] -> m ()
 withPrefix f g = mapM_ (f . g)
 
 formatLog :: GenericHandler Handle -> GenericHandler Handle
-formatLog hd = setFormatter hd $ varFormatter [("nid", nid), ("utc", utc)] fmt
+formatLog hd = setFormatter hd fmt
   where
-    fmt = "[$utc $pid $nid $prio] $msg"
-    utc = formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%SZ" <$> getCurrentTime
-    nid = drop 9 . show <$> myThreadId
+    fmt _ (prio, msg) _ = do
+        tid <- drop 9 . show <$> myThreadId
+        pid <- show <$> getProcessID
+        utc <- ts <$> getCurrentTime
+
+        return $ printf "%s %s{%02s} %-7s %s" utc pid tid (show prio ++ ":") msg
+
+    ts = formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%SZ"

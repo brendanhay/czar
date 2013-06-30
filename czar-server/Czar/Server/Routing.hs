@@ -17,25 +17,25 @@ module Czar.Server.Routing where
 import Control.Applicative
 import Control.Concurrent.STM
 import Control.Monad.IO.Class
-import Data.MultiBiMap        (MultiBiMap)
 import Data.Hashable
 import Data.HashMap.Strict    (HashMap)
 import Data.IORef
 import Data.Foldable          (toList)
-import Czar.Log
-import Czar.Protocol          (Event, Subscription, Tag)
+
+import Czar.Protocol   (Event, Subscription, Tag)
+import Data.MultiBiMap (MultiBiMap)
 
 import qualified Data.HashMap.Strict as Queues
-import qualified Data.MultiBiMap     as Index
 
 import qualified Czar.Internal.Protocol.Event        as E
 import qualified Czar.Internal.Protocol.Subscription as S
 import qualified Czar.Internal.Protocol.Tag          as T
 import qualified Czar.Protocol                       as P
+import qualified Data.MultiBiMap                     as Index
 
 type Key a = (Eq a, Hashable a, Show a)
 
-data Table a = Table (MultiBiMap a Tag) (HashMap a (TQueue Event))
+data Table a = Table !(MultiBiMap a Tag) !(HashMap a (TQueue Event))
 
 newtype Routes a = Routes (IORef (Table a))
 
@@ -48,10 +48,7 @@ emptyRoutes = Routes <$> newIORef (Table Index.empty Queues.empty)
 subscribe :: Key a => Subscription -> a -> Routes a -> IO (TQueue Event)
 subscribe sub key (Routes ref) = do
     q <- newTQueueIO
-    modifyIORef_ ref $ update q
-    logM INFO $ "Subscribing " ++ show key ++ " to " ++ show (toList $ S.tags sub)
-    Table idx _ <- readIORef ref
-    print idx
+    modifyIORef_ ref $! update q
     return $! q
   where
     update q (Table idx qs) = Table
