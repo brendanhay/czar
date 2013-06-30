@@ -14,9 +14,10 @@
 
 module Main (main) where
 
-import           Control.Concurrent       (ThreadId, myThreadId)
+import           Control.Concurrent       hiding (yield)
 import           Control.Concurrent.STM
 import           Control.Error
+import           Control.Monad
 import           Control.Monad.CatchIO
 import           Control.Monad.IO.Class
 import           Network.Socket           (SockAddr)
@@ -24,6 +25,7 @@ import           Options
 
 import           Control.Concurrent.Race
 import           Control.Concurrent.Timer (Seconds)
+import           Czar.EKG
 import           Czar.Log
 import           Czar.Protocol
 import           Czar.Server.Routing
@@ -55,37 +57,38 @@ main = runCommand $ \ServerOpts{..} _ -> scriptLogging srvVerbose $ do
 
     scriptIO $ do
         routes <- liftIO emptyRoutes
+
+        healthCheck
+
         linkedRace_
             (listenHandlers n hds routes)
             (listenAgents n lst)
 
 listenHandlers :: MonadCatchIO m => Seconds -> SockAddr -> Routes ThreadId -> m ()
-listenHandlers n addr routes = listen addr $ receive yield `finally` logPeerRX "FIN"
+listenHandlers n addr routes = listen addr $ receive yield
   where
     yield (S sub) = do
-        tid   <- liftIO myThreadId
-
         logPeerInfo $ "subscribing to " ++ formatTags sub
 
-        queue <- liftIO $ subscribe sub tid routes
+        parent <- liftIO myThreadId
+        queue  <- liftIO $ subscribe sub parent routes
 
          -- publish events in forked child
-        fork $ do
-            evt <- liftIO . atomically $ readTQueue queue
-            send evt
+        child  <- fork $ liftIO (atomically $ readTQueue queue) >>= send
+        timer  <- heartbeat n $ unsubscribe parent routes
 
-        -- keepalive in the main thread
-        sendHeartbeats n >>= keepalive
+        -- block on keepalive in the main thread
+        keepalive timer `finally` liftIO (killThread child)
 
     yield _ = return ()
 
-    keepalive = receive . heartbeat
+    keepalive = receive . ack
 
-    heartbeat t Ack = logPeerRX "ACK" >> Timer.reset t >> keepalive t
-    heartbeat t _   = logPeerRX "FIN" >> Timer.cancel t
+    ack t Ack = logPeerRX "ACK" >> Timer.reset t >> keepalive t
+    ack t _   = logPeerRX "FIN" >> Timer.cancel t
 
 listenAgents :: MonadCatchIO m => Seconds -> SockAddr -> m ()
-listenAgents n addr = listen addr $ sendHeartbeats n >>= continue
+listenAgents n addr = listen addr $ heartbeat n (return ()) >>= continue
   where
     continue = receive . yield
 
@@ -93,6 +96,14 @@ listenAgents n addr = listen addr $ sendHeartbeats n >>= continue
     yield t Ack     = logPeerRX "ACK" >> Timer.reset t >> continue t
     yield t _       = logPeerRX "FIN" >> Timer.cancel t
 
+healthCheck :: (Functor m, MonadCatchIO m) => m ThreadId
+healthCheck = liftIO . forkIO $ do
+    stats <- newStats
+    forever $ do
+        threadDelay 10000000
+        m <- sampleStats stats
+        putStrLn "Stats:"
+        print m
 
 -- Each socket type flips between send and receive depending on a prior state
 
@@ -125,5 +136,5 @@ listenAgents n addr = listen addr $ sendHeartbeats n >>= continue
 
 -- HandlerServer Pull Pong
 --  Handshakes with Sub
---  Sends: ACK
+--  Sends: ACK | EVT
 --  Receives: SYN | EVT

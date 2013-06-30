@@ -9,9 +9,10 @@
 -- Stability   : experimental
 -- Portability : non-portable (GHC extensions)
 
+
 module Czar.EKG
-    ( startEKG
-    , sampleAll
+    ( newStats
+    , sampleStats
 
     -- * Re-exported
     , Server
@@ -20,16 +21,20 @@ module Czar.EKG
     , getLabel
     ) where
 
+import           Control.Applicative
+import           Control.Concurrent
 import           Control.Monad.IO.Class
-import           System.Remote.Common   hiding (sampleAll)
+import           Data.IORef
+import           System.Remote.Common
 
-import qualified System.Remote.Common   as C
+import qualified Data.HashMap.Strict    as M
 
-startEKG :: MonadIO m => m Server
-startEKG = liftIO $ Server undefined
-    <$> newIORef M.empty
+newStats :: MonadIO m => m Server
+newStats = liftIO $ Server
+    <$> myThreadId
     <*> newIORef M.empty
     <*> newIORef M.empty
+    <*> newIORef M.empty
 
-sampleAll :: MonadIO m => Server -> m Metrics
-sampleAll = liftIO . C.sampleAll
+sampleStats :: MonadIO m => Server -> m Metrics
+sampleStats = liftIO . sampleAll
