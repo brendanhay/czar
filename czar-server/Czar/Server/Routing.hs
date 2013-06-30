@@ -13,8 +13,10 @@
 -- Portability : non-portable (GHC extensions)
 
 module Czar.Server.Routing
+    ( Routes
+
     -- * Constructor
-    ( emptyRoutes
+    , emptyRoutes
 
     -- * Operations
     , subscribe
