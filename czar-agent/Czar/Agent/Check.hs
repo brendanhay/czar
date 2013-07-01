@@ -19,32 +19,28 @@ module Czar.Agent.Check
     , forkChecks
     ) where
 
-import           Prelude                      hiding (lookup)
-
 import           Control.Applicative          ((<$>), (<*>))
 import           Control.Concurrent
 import           Control.Concurrent.Async
 import           Control.Concurrent.STM
 import           Control.Monad
 import           Control.Monad.IO.Class
+import qualified Czar.Internal.Protocol.Event as E
+import           Czar.Protocol
 import           Data.Configurator
 import           Data.Configurator.Types
+import qualified Data.HashMap.Lazy            as H
 import           Data.List                    (isSuffixOf)
 import           Data.Maybe
 import           Data.Monoid
+import qualified Data.Sequence                as Seq
 import           Data.Text                    (Text)
+import qualified Data.Text                    as T
+import qualified Data.Text.Lazy               as LT
+import qualified Data.Text.Lazy.Encoding      as LE
+import           Prelude                      hiding (lookup)
 import           System.Directory
 import           System.FilePath
-
-import qualified Data.HashMap.Lazy            as H
-import qualified Data.Sequence                as Seq
-import qualified Data.Text                    as T
-import qualified Data.Text.Lazy.Encoding      as LE
-import qualified Data.Text.Lazy               as LT
-
-import           Czar.Protocol
-
-import qualified Czar.Internal.Protocol.Event as E
 
 data Check = Check
     { chkName     :: !Text

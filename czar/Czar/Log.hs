@@ -19,6 +19,7 @@ module Czar.Log
     , logInfo
     , logWarn
     , logError
+    , logDebug
     ) where
 
 import           Control.Applicative
@@ -30,11 +31,10 @@ import           System.IO
 import           System.Locale             (defaultTimeLocale)
 import           System.Log.Handler        (setFormatter)
 import           System.Log.Handler.Simple
+import qualified System.Log.Logger         as L
 import           System.Log.Logger         hiding (logM)
 import           System.Posix.Process      (getProcessID)
 import           Text.Printf
-
-import qualified System.Log.Logger         as L
 
 -- FIXME: Added debug logging and setting the log level via cli options
 
@@ -47,10 +47,11 @@ logM prio = liftIO . L.logM logName prio
 logInfoM :: MonadIO m => (a -> String) -> [a] -> m ()
 logInfoM = withPrefix logInfo
 
-logInfo, logWarn, logError :: MonadIO m => String -> m ()
+logInfo, logWarn, logError, logDebug :: MonadIO m => String -> m ()
 logInfo  = logMsg infoM
 logWarn  = logMsg warningM
 logError = logMsg errorM
+logDebug = logMsg debugM
 
 --
 -- Internal

@@ -17,16 +17,13 @@
 module Main (main) where
 
 import           Control.Error
-import           Control.Monad.IO.Class
-import           Options
-
-import qualified Data.Sequence                       as Seq
-
+import qualified Czar.Internal.Protocol.Event        as E
 import           Czar.Internal.Protocol.Subscription
-import           Czar.Internal.Protocol.Tag
 import           Czar.Log
 import           Czar.Protocol
 import           Czar.Socket
+import qualified Data.Sequence                       as Seq
+import           Options
 
 defineOptions "HandlerOpts" $ do
     stringOption "hdServer" "server" defaultHandler
@@ -41,15 +38,22 @@ main = runCommand $ \HandlerOpts{..} _ -> scriptLogging hdVerbose $ do
 
     logInfo "starting graphite handler ..."
 
-    scriptIO . connect addr $ send sub >> continue
+    scriptIO . connect addr $ do
+        logPeerTX $ "sending subscription for " ++ show tags
+
+        send sub
+
+        continue
   where
     sub = Subscription
         "graphite"
-        (Just "Graphite Yieldr")
-        (Seq.fromList [Tag "*"])
+        (Just "Graphite Handler")
+        (Seq.fromList tags)
+
+    tags = ["*"]
 
     continue = receive yield
 
-    yield (E evt) = liftIO (print evt) >> continue
+    yield (E evt) = logPeerRX (show $ E.key evt) >> continue
     yield Syn     = logPeerRX "SYN" >> send Ack >> logPeerTX "ACK" >> continue
     yield _       = logPeerRX "FIN"

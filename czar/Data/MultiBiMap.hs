@@ -27,12 +27,11 @@ module Data.MultiBiMap
     , inverse
     ) where
 
-import           Data.Hashable
-import           Data.HashSet        (HashSet)
-import           Prelude             hiding (lookup)
-
 import qualified Data.HashMap.Strict as Map
+import           Data.HashSet        (HashSet)
 import qualified Data.HashSet        as Set
+import           Data.Hashable
+import           Prelude             hiding (lookup)
 
 type Constraints a b = (Eq a, Hashable a, Eq b, Hashable b)
 

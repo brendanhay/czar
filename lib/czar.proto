@@ -19,24 +19,20 @@ message Attribute {
   required string value = 2;
 }
 
-message Tag {
-  required string name = 1;
-}
-
 message Event {
   required int64 time = 1;
   required string host = 2;
   required string key = 3;
   optional string description = 4;
-  repeated Tag tags = 5;
-  repeated Metric metrics = 6;
-  repeated Attribute attributes = 7;
+  repeated string tags = 7;
+  repeated Metric metrics = 8;
+  repeated Attribute attributes = 9;
 }
 
 message Subscription {
   required string identity = 1;
   optional string description = 2;
-  repeated Tag tags = 5;
+  repeated string tags = 5;
 }
 
 message Heartbeat {

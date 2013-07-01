@@ -23,19 +23,16 @@ import           Control.Concurrent.STM
 import           Control.Error
 import           Control.Monad.CatchIO
 import           Control.Monad.IO.Class
-import           Network.BSD                  hiding (hostName)
-import           Network.Socket               (SockAddr)
-import           Options
-
-import qualified Data.Sequence                as Seq
-import qualified Data.Text                    as T
-
 import           Czar.Agent.Check
+import qualified Czar.Internal.Protocol.Event as E
 import           Czar.Log
 import           Czar.Protocol
 import           Czar.Socket
-
-import qualified Czar.Internal.Protocol.Event as E
+import qualified Data.Sequence                as Seq
+import qualified Data.Text                    as T
+import           Network.BSD                  hiding (hostName)
+import           Network.Socket               (SockAddr)
+import           Options
 
 defineOptions "MainOpts" $
     boolOption "mainVerbose" "verbose" False

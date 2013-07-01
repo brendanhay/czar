@@ -27,60 +27,58 @@ module Czar.Server.Routing
 import           Control.Applicative
 import           Control.Concurrent.STM
 import           Control.Monad.IO.Class
-import           Data.Hashable
-import           Data.HashMap.Strict                 (HashMap)
-import           Data.IORef
-import           Data.Foldable                       (toList)
-
-import qualified Data.HashMap.Strict                 as Queues
-
-import           Czar.Protocol                       (Event, Subscription, Tag)
-import           Data.MultiBiMap                     (MultiBiMap)
-
 import qualified Czar.Internal.Protocol.Event        as E
 import qualified Czar.Internal.Protocol.Subscription as S
-import qualified Czar.Internal.Protocol.Tag          as T
+import           Czar.Log
+import           Czar.Protocol                       (Event, Subscription)
 import qualified Czar.Protocol                       as P
+import           Data.ByteString.Lazy                (ByteString)
+import qualified Data.ByteString.Lazy.Char8          as LBS
+import           Data.Foldable                       (toList)
+import           Data.HashMap.Strict                 (HashMap)
+import qualified Data.HashMap.Strict                 as Queues
+import           Data.Hashable
+import           Data.IORef
+import           Data.MultiBiMap                     (MultiBiMap)
 import qualified Data.MultiBiMap                     as Index
 
 type Key a = (Eq a, Hashable a, Show a)
 
-data Table a = Table !(MultiBiMap a Tag) !(HashMap a (TQueue Event))
+data Table a = Table !(MultiBiMap a ByteString) !(HashMap a (TQueue Event))
 
 newtype Routes a = Routes (IORef (Table a))
 
-instance Hashable Tag where
-    hashWithSalt salt (T.Tag n) = hashWithSalt salt $ P.utf8ToBS n
+emptyRoutes :: (Functor m, MonadIO m, Key a) => m (Routes a)
+emptyRoutes = Routes <$> liftIO (newIORef $ Table Index.empty Queues.empty)
 
-emptyRoutes :: Key a => IO (Routes a)
-emptyRoutes = Routes <$> newIORef (Table Index.empty Queues.empty)
-
-subscribe :: Key a => Subscription -> a -> Routes a -> IO (TQueue Event)
+subscribe :: (MonadIO m, Key a) => Subscription -> a -> Routes a -> m (TQueue Event)
 subscribe sub key (Routes ref) = do
-    q <- newTQueueIO
+    q <- liftIO newTQueueIO
     modifyIORef_ ref $! update q
     return $! q
   where
     update q (Table idx qs) = Table
-        (Index.insert key (toList $ S.tags sub) idx)
+        (Index.insert key (map P.utf8 . toList $ S.tags sub) idx)
         (Queues.insert key q qs)
 
-unsubscribe :: Key a => a -> Routes a -> IO ()
+
+Delete seems to be removing _all_?
+
+unsubscribe :: (MonadIO m, Key a) => a -> Routes a -> m ()
 unsubscribe key (Routes ref) = modifyIORef_ ref delete
   where
     delete (Table idx qs) = Table
         (Index.delete key idx)
         (Queues.delete key qs)
 
-notify :: Key a => Event -> Routes a -> IO ()
+notify :: (MonadIO m, Key a) => Event -> Routes a -> m ()
 notify evt (Routes ref) = do
-    (Table idx qs) <- readIORef ref
+    (Table idx qs) <- liftIO $ readIORef ref
 
-    let tags = T.Tag "*" : toList (E.tags evt)
+    let tags = "*" : (map P.utf8 . toList $ E.tags evt)
         keys = concatMap (`Index.inverse` idx) tags
 
-    print tags
-    print keys
+    logDebug $ "sending to " ++ show keys
 
     mapM_ (push . (`Queues.lookup` qs)) keys
   where
@@ -91,5 +89,5 @@ notify evt (Routes ref) = do
 -- Internal
 --
 
-modifyIORef_ :: IORef a -> (a -> a) -> IO ()
-modifyIORef_ ref f = atomicModifyIORef' ref $ \x -> (f x, ())
+modifyIORef_ :: MonadIO m => IORef a -> (a -> a) -> m ()
+modifyIORef_ ref f = liftIO $ atomicModifyIORef' ref $ \x -> (f x, ())

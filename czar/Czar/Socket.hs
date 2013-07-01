@@ -48,26 +48,23 @@ module Czar.Socket
 
 import           Control.Applicative
 import           Control.Concurrent
+import           Control.Concurrent.Timer       (Timer)
+import qualified Control.Concurrent.Timer       as Timer
 import           Control.Error
 import           Control.Monad.CatchIO
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
+import           Czar.Log
+import           Czar.Protocol
+import qualified Network.Socket                 as Sock hiding (recv)
 import           Network.Socket                 hiding (listen, connect, accept, send, close, socket)
+import qualified Network.Socket.ByteString.Lazy as Sock
 import           System.Directory
 import           System.FilePath
 import           System.IO.Unsafe               (unsafePerformIO)
+import qualified Text.ParserCombinators.Parsec  as P
 import           Text.ParserCombinators.Parsec  hiding ((<|>), try)
 import           Text.Printf
-
-import qualified Network.Socket                 as Sock hiding (recv)
-import qualified Network.Socket.ByteString.Lazy as Sock
-import qualified Text.ParserCombinators.Parsec  as P
-
-import           Control.Concurrent.Timer       (Seconds, Timer)
-import           Czar.Log
-import           Czar.Protocol
-
-import qualified Control.Concurrent.Timer       as Timer
 
 defaultAgent, defaultServer, defaultHandler :: String
 defaultAgent   = "unix://czar-agent.sock"
@@ -125,17 +122,15 @@ send msg = do
     sock <- socket
     liftIO . Sock.sendAll sock $ messagePut msg
 
-heartbeat :: MonadIO m => Seconds -> IO () -> Context m Timer
-heartbeat n cleanup = do
+heartbeat :: MonadIO m => Int -> Context m Timer
+heartbeat n = do
     sock <- socket
     peer <- peerName
     name <- sockName
 
     Timer.start n
         (logTX name peer "SYN" >> send' sock Syn)
-        (finally
-            (logRX peer name "TIMEOUT" >> send' sock Fin)
-            (close sock >> cleanup))
+        (logRX peer name "TIMEOUT" >> send' sock Fin `finally` close sock)
   where
     send' sock = Sock.sendAll sock . messagePut
 

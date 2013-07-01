@@ -1,5 +1,6 @@
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE TemplateHaskell   #-}
 
 -- |
 -- Module      : Main
@@ -14,33 +15,32 @@
 
 module Main (main) where
 
-import           Control.Concurrent       hiding (yield)
+import           Control.Concurrent                  hiding (yield)
+import           Control.Concurrent.Race
 import           Control.Concurrent.STM
+import qualified Control.Concurrent.Timer            as Timer
 import           Control.Error
 import           Control.Monad
 import           Control.Monad.CatchIO
 import           Control.Monad.IO.Class
-import           Network.Socket           (SockAddr)
-import           Options
-
-import           Control.Concurrent.Race
-import           Control.Concurrent.Timer (Seconds)
 import           Czar.EKG
+import qualified Czar.Internal.Protocol.Subscription as S
 import           Czar.Log
 import           Czar.Protocol
 import           Czar.Server.Routing
 import           Czar.Socket
-
-import qualified Control.Concurrent.Timer as Timer
+import           Data.Foldable                       (toList)
+import           Network.Socket                      (SockAddr)
+import           Options
 
 defineOptions "ServerOpts" $ do
-    stringOption "srvListen" "listen" defaultServer
+    stringOption "srvAgents" "listen-agents" defaultServer
         ""
 
-    stringOption "srvHandlers" "publish" defaultHandler
+    stringOption "srvHandlers" "listen-handlers" defaultHandler
         ""
 
-    integerOption "srvHeartbeat" "heartbeat" 5
+    integerOption "srvHeartbeat" "heartbeat" 300
         ""
 
     boolOption "srvVerbose" "verbose" False
@@ -49,33 +49,52 @@ defineOptions "ServerOpts" $ do
 main :: IO ()
 main = runCommand $ \ServerOpts{..} _ -> scriptLogging srvVerbose $ do
     hds <- parseAddr srvHandlers
-    lst <- parseAddr srvListen
+    lst <- parseAddr srvAgents
 
     logInfo "starting server ..."
 
-    let n = fromInteger srvHeartbeat
+    -- seconds to microseconds
+    let timeout = fromIntegral srvHeartbeat * 1000000
+        metrics = 30 * 1000000
 
     scriptIO $ do
         routes <- liftIO emptyRoutes
+        stats  <- newStats
+            "localhost"
+            "czar.server.internal"
+            Nothing
+            ["czar-server"]
 
-        healthCheck
+        healthCheck metrics routes stats
 
         linkedRace_
-            (listenHandlers n hds routes)
-            (listenAgents n lst)
+            (listenHandlers timeout hds routes)
+            (listenAgents timeout lst routes)
 
-listenHandlers :: MonadCatchIO m => Seconds -> SockAddr -> Routes ThreadId -> m ()
+listenHandlers :: MonadCatchIO m => Int -> SockAddr -> Routes ThreadId -> m ()
 listenHandlers n addr routes = listen addr $ receive yield
   where
-    yield (S sub) = do
-        logPeerInfo $ "subscribing to " ++ formatTags sub
+    yield (S sub@S.Subscription{..}) = do
+
+        logPeerInfo $ "subscribing "
+            ++ uToString identity
+            ++ " handler to "
+            ++ show (toList tags)
 
         parent <- liftIO myThreadId
         queue  <- liftIO $ subscribe sub parent routes
 
-         -- publish events in forked child
-        child  <- fork $ liftIO (atomically $ readTQueue queue) >>= send
-        timer  <- heartbeat n $ unsubscribe parent routes
+        timer  <- heartbeat n
+
+        -- there is a race here which forkFinally would fix,
+        -- when the thread fails to start the subscription is not removed
+        child  <- fork $ finally
+            (forever $ do
+                evt <- liftIO . atomically $ readTQueue queue
+                send evt)
+            (do
+                logInfo $ "unsubscribing " ++ show parent
+                unsubscribe parent routes)
 
         -- block on keepalive in the main thread
         keepalive timer `finally` liftIO (killThread child)
@@ -87,54 +106,55 @@ listenHandlers n addr routes = listen addr $ receive yield
     ack t Ack = logPeerRX "ACK" >> Timer.reset t >> keepalive t
     ack t _   = logPeerRX "FIN" >> Timer.cancel t
 
-listenAgents :: MonadCatchIO m => Seconds -> SockAddr -> m ()
-listenAgents n addr = listen addr $ heartbeat n (return ()) >>= continue
+listenAgents :: MonadCatchIO m => Int -> SockAddr -> Routes ThreadId -> m ()
+listenAgents n addr routes = listen addr $ heartbeat n >>= continue
   where
     continue = receive . yield
 
-    yield t (E evt) = Timer.reset t >> liftIO (print evt) >> continue t
+    yield t (E evt) = Timer.reset t >> notify evt routes >> continue t
     yield t Ack     = logPeerRX "ACK" >> Timer.reset t >> continue t
     yield t _       = logPeerRX "FIN" >> Timer.cancel t
 
-healthCheck :: (Functor m, MonadCatchIO m) => m ThreadId
-healthCheck = liftIO . forkIO $ do
-    stats <- newStats
-    forever $ do
-        threadDelay 10000000
-        m <- sampleStats stats
-        putStrLn "Stats:"
-        print m
+healthCheck :: (Functor m, MonadCatchIO m)
+            => Int
+            -> Routes ThreadId
+            -> Stats
+            -> m ThreadId
+healthCheck n routes stats = liftIO . forkIO . forever $ do
+    threadDelay n
+    logDebug "sampling internal stats"
+    sampleStats stats >>= flip notify routes
 
 -- Each socket type flips between send and receive depending on a prior state
 
--- AgentServer Push Pong
---  Handshakes with ()
---  Sends: Few ACK, Many EVT
---  Receives: SYN
+AgentServer Push Pong
+ Handshakes with ()
+ Sends: Few ACK, Many EVT
+ Receives: SYN
 
--- ServerAgent Pull Ping
---  Handshakes with ()
---  Sends: SYN
---  Receives: ACK | EVT
-
-
--- AgentAgent Push Pong
---  Handshakes with ()
---  Sends: Few ACK, Many EVT
---  Receives: SYN
-
--- AgentAgent Pull Ping
---  Handshakes with ()
---  Sends: SYN
---  Receives ACK | EVT
+ServerAgent Pull Ping
+ Handshakes with ()
+ Sends: SYN
+ Receives: ACK | EVT
 
 
--- ServerHandler Push Ping
---  Handshakes with SUB
---  Sends: SYN | EVT
---  Receives: ACK
+AgentAgent Push Pong
+ Handshakes with ()
+ Sends: Few ACK, Many EVT
+ Receives: SYN
 
--- HandlerServer Pull Pong
---  Handshakes with Sub
---  Sends: ACK | EVT
---  Receives: SYN | EVT
+AgentAgent Pull Ping
+ Handshakes with ()
+ Sends: SYN
+ Receives ACK | EVT
+
+
+ServerHandler Push Ping
+ Handshakes with SUB
+ Sends: SYN | EVT
+ Receives: ACK
+
+HandlerServer Pull Pong
+ Handshakes with Sub
+ Sends: ACK | EVT
+ Receives: SYN | EVT

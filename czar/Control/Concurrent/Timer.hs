@@ -17,23 +17,19 @@ import Control.Concurrent
 import Control.Monad.IO.Class
 import Data.IORef
 
-newtype Seconds = Seconds Int deriving (Eq, Ord, Num, Real)
-
 data Timer = Timer !(IORef Bool) !ThreadId
 
-start :: MonadIO m => Seconds -> IO () -> IO () -> m Timer
-start (Seconds n) action cleanup = liftIO $ do
+start :: MonadIO m => Int -> IO () -> IO () -> m Timer
+start n action cleanup = liftIO $ do
     ref <- newIORef False
-    tid <- forkIO $ run ref
+    tid <- forkIO $ threadDelay n >> run ref
     return $! Timer ref tid
   where
     run ref = do
-        p <- action >> threadDelay delay >> readIORef ref
+        p <- action >> threadDelay n >> readIORef ref
         if p
          then run ref
          else cleanup
-
-    delay = n * 1000000
 
 reset :: MonadIO m => Timer -> m ()
 reset (Timer ref _) = liftIO $ atomicWriteIORef ref True
