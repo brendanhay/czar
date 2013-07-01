@@ -75,7 +75,6 @@ listenHandlers :: MonadCatchIO m => Int -> SockAddr -> Routes ThreadId -> m ()
 listenHandlers n addr routes = listen addr $ receive yield
   where
     yield (S sub@S.Subscription{..}) = do
-
         logPeerInfo $ "subscribing "
             ++ uToString identity
             ++ " handler to "
@@ -83,17 +82,12 @@ listenHandlers n addr routes = listen addr $ receive yield
 
         parent <- liftIO myThreadId
         queue  <- liftIO $ subscribe sub parent routes
-
         timer  <- heartbeat n
-
-        -- there is a race here which forkFinally would fix,
-        -- when the thread fails to start the subscription is not removed
-        child  <- fork $ finally
+        child  <- forkContextFinally
             (forever $ do
                 evt <- liftIO . atomically $ readTQueue queue
                 send evt)
-            (do
-                logInfo $ "unsubscribing " ++ show parent
+            (do logInfo $ "unsubscribing " ++ show parent
                 unsubscribe parent routes)
 
         -- block on keepalive in the main thread
@@ -125,36 +119,37 @@ healthCheck n routes stats = liftIO . forkIO . forever $ do
     logDebug "sampling internal stats"
     sampleStats stats >>= flip notify routes
 
+
 -- Each socket type flips between send and receive depending on a prior state
 
-AgentServer Push Pong
- Handshakes with ()
- Sends: Few ACK, Many EVT
- Receives: SYN
+-- AgentServer Push Pong
+--  Handshakes with ()
+--  Sends: Few ACK, Many EVT
+--  Receives: SYN
 
-ServerAgent Pull Ping
- Handshakes with ()
- Sends: SYN
- Receives: ACK | EVT
-
-
-AgentAgent Push Pong
- Handshakes with ()
- Sends: Few ACK, Many EVT
- Receives: SYN
-
-AgentAgent Pull Ping
- Handshakes with ()
- Sends: SYN
- Receives ACK | EVT
+-- ServerAgent Pull Ping
+--  Handshakes with ()
+--  Sends: SYN
+--  Receives: ACK | EVT
 
 
-ServerHandler Push Ping
- Handshakes with SUB
- Sends: SYN | EVT
- Receives: ACK
+-- AgentAgent Push Pong
+--  Handshakes with ()
+--  Sends: Few ACK, Many EVT
+--  Receives: SYN
 
-HandlerServer Pull Pong
- Handshakes with Sub
- Sends: ACK | EVT
- Receives: SYN | EVT
+-- AgentAgent Pull Ping
+--  Handshakes with ()
+--  Sends: SYN
+--  Receives ACK | EVT
+
+
+-- ServerHandler Push Ping
+--  Handshakes with SUB
+--  Sends: SYN | EVT
+--  Receives: ACK
+
+-- HandlerServer Pull Pong
+--  Handshakes with Sub
+--  Sends: ACK | EVT
+--  Receives: SYN | EVT

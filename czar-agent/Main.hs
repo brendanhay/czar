@@ -113,8 +113,7 @@ runConnect ConnOpts{..} = do
 
 connectServer :: (Functor m, MonadCatchIO m) => SockAddr -> TQueue Event -> m ()
 connectServer addr queue = connect addr $ do
-    child <- fork $ liftIO (atomically $ readTQueue queue) >>= send
-
+    child <- forkContext $ liftIO (atomically $ readTQueue queue) >>= send
     keepalive `finally` liftIO (killThread child)
   where
     keepalive = receive syn
@@ -129,7 +128,3 @@ listenAgents addr queue = listen addr continue
 
     yield (E evt) = logPeerRX "EVT" >> liftIO (atomically $ writeTQueue queue evt) >> continue
     yield _       = logPeerRX "FIN"
-
-healthCheck = do
-    a <- async
-    link a

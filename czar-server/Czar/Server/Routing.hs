@@ -61,8 +61,7 @@ subscribe sub key (Routes ref) = do
         (Index.insert key (map P.utf8 . toList $ S.tags sub) idx)
         (Queues.insert key q qs)
 
-
-Delete seems to be removing _all_?
+-- FIXME: unsubscribe seems to be removing _all_?
 
 unsubscribe :: (MonadIO m, Key a) => a -> Routes a -> m ()
 unsubscribe key (Routes ref) = modifyIORef_ ref delete
