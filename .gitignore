@@ -4,6 +4,7 @@
 *.hi
 *.chi
 *.chs.h
+*.imports
 
 # Dirs
 cabal-dev

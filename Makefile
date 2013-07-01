@@ -24,9 +24,8 @@ install: $(DEPS)
 	 --disable-documentation \
 	 --disable-library-coverage
 
-
 clean:
-	-rm -rf .conf bin/czar-* $(DEPS)
+	-rm -rf dist .conf bin/czar-* $(DEPS) *.imports
 
 #
 # Test
