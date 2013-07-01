@@ -35,7 +35,10 @@ module Czar.Socket
     , send
     , heartbeat
     , close
-    , fork
+
+    -- * Fork Contexts
+    , forkContext
+    , forkContextFinally
 
     -- * Logging
     , logPeerInfo
@@ -134,8 +137,20 @@ heartbeat n = do
   where
     send' sock = Sock.sendAll sock . messagePut
 
-fork :: (Functor m, MonadCatchIO m) => Context IO () -> Context m ThreadId
-fork ctx = socket >>= liftIO . forkIO . runReaderT (runCtx ctx)
+forkContext :: (Functor m, MonadCatchIO m)
+            => Context IO ()
+            -> Context m ThreadId
+forkContext = (`forkContextFinally` return ())
+
+forkContextFinally :: (Functor m, MonadCatchIO m)
+                   => Context IO ()
+                   -> IO ()
+                   -> Context m ThreadId
+forkContextFinally ctx cleanup = do
+    sock <- socket
+    liftIO $ forkFinally
+        (runReaderT (runCtx ctx) sock)
+        (const cleanup)
 
 socket :: Monad m => Context m Socket
 socket = ask
