@@ -119,37 +119,3 @@ listenAgents n addr routes =
     yield t (E evt) = Timer.reset t >> notify evt routes >> continue t
     yield t Ack     = logPeerRX "ACK" >> Timer.reset t >> continue t
     yield t _       = logPeerRX "FIN" >> Timer.cancel t
-
--- Each socket type flips between send and receive depending on a prior state
-
--- AgentServer Push Pong
---  Handshakes with ()
---  Sends: Few ACK, Many EVT
---  Receives: SYN
-
--- ServerAgent Pull Ping
---  Handshakes with ()
---  Sends: SYN
---  Receives: ACK | EVT
-
-
--- AgentAgent Push Pong
---  Handshakes with ()
---  Sends: Few ACK, Many EVT
---  Receives: SYN
-
--- AgentAgent Pull Ping
---  Handshakes with ()
---  Sends: SYN
---  Receives ACK | EVT
-
-
--- ServerHandler Push Ping
---  Handshakes with SUB
---  Sends: SYN | EVT
---  Receives: ACK
-
--- HandlerServer Pull Pong
---  Handshakes with Sub
---  Sends: ACK | EVT
---  Receives: SYN | EVT
