@@ -33,7 +33,6 @@ import           Czar.Log
 import           Czar.Protocol                       (Event, Subscription)
 import qualified Czar.Protocol                       as P
 import           Data.ByteString.Lazy                (ByteString)
-import qualified Data.ByteString.Lazy.Char8          as LBS
 import           Data.Foldable                       (toList)
 import           Data.HashMap.Strict                 (HashMap)
 import qualified Data.HashMap.Strict                 as Queues

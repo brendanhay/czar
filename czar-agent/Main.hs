@@ -1,8 +1,8 @@
-{-# LANGUAGE ConstraintKinds     #-}
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE RecordWildCards     #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell     #-}
+{-# OPTIONS_GHC -fno-warn-missing-signatures #-}
+{-# LANGUAGE ConstraintKinds                 #-}
+{-# LANGUAGE OverloadedStrings               #-}
+{-# LANGUAGE RecordWildCards                 #-}
+{-# LANGUAGE ScopedTypeVariables             #-}
 
 -- |
 -- Module      : Main
@@ -20,100 +20,138 @@ module Main (main) where
 import           Control.Concurrent           hiding (yield)
 import           Control.Concurrent.Race
 import           Control.Concurrent.STM
-import           Control.Error
+import           Control.Monad
 import           Control.Monad.CatchIO
 import           Control.Monad.IO.Class
 import           Czar.Agent.Check
+import           Czar.EKG
 import qualified Czar.Internal.Protocol.Event as E
 import           Czar.Log
-import           Czar.Protocol
+import           Czar.Options
+import           Czar.Protocol                hiding (S, fromString)
 import           Czar.Socket
+import           Czar.Types
 import qualified Data.Sequence                as Seq
+import           Data.String
 import qualified Data.Text                    as T
 import           Network.BSD                  hiding (hostName)
-import           Network.Socket               (SockAddr)
-import           Options
 
-defineOptions "MainOpts" $
-    boolOption "mainVerbose" "verbose" False
-        "Be really loud."
+data Send = Send
+    { sendAgent :: Address
+    , sendTags  :: [String]
+    , sendDebug :: Bool
+    }
 
-defineOptions "SendOpts" $ do
-    stringOption "sendAgent" "connect" defaultAgent
-        "Socket of the agent to send to."
+data Connect = Connect
+    { connListen  :: Address
+    , connServer  :: Address
+    , connHost    :: String
+    , connMetrics :: Seconds
+    , connChecks  :: [FilePath]
+    , connSplay   :: Seconds
+    , connTags    :: [String]
+    , connDebug   :: Bool
+    }
 
-    stringsOption "sendTags" "tags" []
-        "Comma separated list of tags to add."
+data Command
+    = S Send
+    | C Connect
 
-defineOptions "ConnOpts" $ do
-    stringOption "connListen" "listen" defaultAgent
-        "Socket to listen on for incoming connections."
+instance CommonOptions Command where
+    debug (S s) = sendDebug s
+    debug (C c) = connDebug c
 
-    stringOption "connServer" "server" defaultServer
-        "Server for the agent to connect to."
+sendCommand = command "send" . info (S <$> parser) $ progDesc ""
+  where
+    parser = Send
+        <$> addressOption "agent" defaultAgent
+                "Czar Agent address to connect to"
 
-    stringOption "connHost" "hostname" ""
-        "Hostname used to identify the machine."
+        <*> stringsOption "tags" []
+                "Comma separated list to tags to annotate the event"
 
-    integerOption "connSplay" "splay" 50
-        "Given a list of checks, differentiate their start times by this number of milliseconds."
+        <*> debugSwitch
 
-    stringsOption "connTags" "tags" []
-        "Comma separated list of tags to always send."
+connectCommand = command "connect" . info (C <$> parser) $ progDesc ""
+  where
+    parser = Connect
+        <$> addressOption "listen" defaultAgent
+                "Listen address for Czar Agent connections"
 
-    stringsOption "connChecks" "checks" ["etc/czar/checks.list.d"]
-        "Paths to files or directories containing check configuration."
+        <*> addressOption "server" defaultServer
+                "Czar Agent address to connect to"
+
+        <*> stringOption "host" ""
+                "Hostname used to identify the machine (auto-determined if blank)"
+
+        <*> secondsOption "metrics-interval" 30
+                "Interval between internal metric emissions"
+
+        <*> stringsOption "checks" ["etc/czar/checks.list.d"]
+                "Comma separated list of files or directories containing check config"
+
+        <*> secondsOption "splay" 1
+                "Stagger check start times by this number of seconds"
+
+        <*> stringsOption "tags" []
+                "Comma separated list of tags to prepend to every event"
+
+        <*> debugSwitch
+
+program :: ParserInfo Command
+program = info (helper <*> subparser (sendCommand <> connectCommand)) $
+       fullDesc
+    <> progDesc "asdsad"
+    <> header "adsdas"
 
 main :: IO ()
-main = runSubcommand
-    [ cmd "send"    runSend
-    , cmd "connect" runConnect
-    ]
+main = runProgram program $ \opts ->
+    case opts of
+        S s -> runSend s
+        C c -> runConnect c
   where
-    cmd name action = subcommand name $
-        \MainOpts{..} opts _ -> scriptLogging mainVerbose $ action opts
+    runSend Send{..} = do
+        logInfo "connecting to agent ..."
 
-runSend :: SendOpts -> Script ()
-runSend SendOpts{..} = do
-    addr <- parseAddr sendAgent
+        connect sendAgent $ do
+            send $ E.Event 0 "hi!" "key" Nothing (Seq.fromList []) (Seq.fromList []) (Seq.fromList [])
+            logInfo $ "payload sent to " ++ show sendAgent
 
-    logInfo "connecting to agent ..."
+        logInfo "Done."
 
-    scriptIO . connect addr $ do
-        send $ E.Event 0 "hi!" "key" Nothing (Seq.fromList []) (Seq.fromList []) (Seq.fromList [])
-        logInfo $ "payload sent to " ++ show addr
+    runConnect Connect{..} = do
+        host <- if null connHost
+                then liftIO getHostName
+                else return connHost
 
-    logInfo "Done."
+        logInfo $ "identifying host as " ++ host
+        logInfo "starting agent ..."
 
-runConnect :: ConnOpts -> Script ()
-runConnect ConnOpts{..} = do
-    host <- if null connHost
-            then liftIO getHostName
-            else return connHost
-
-    srv  <- parseAddr connServer
-    lst  <- parseAddr connListen
-
-    logInfo $ "identifying host as " ++ host
-    logInfo "starting agent ..."
-
-    scriptIO $ do
         logInfoM ("loading checks from " ++) connChecks
 
         checks <- loadChecks connChecks
         queue  <- atomically newTQueue
 
         logInfoM (("adding " ++) . T.unpack . chkName) checks
-
         forkChecks connSplay queue checks
 
-        linkedRace_
-            (connectServer srv queue)
-            (listenAgents lst queue)
+        stats  <- newStats
+            (fromString connHost)
+            "czar.agent.internal"
+            Nothing
+            ["czar-agent"]
 
-connectServer :: (Functor m, MonadCatchIO m) => SockAddr -> TQueue Event -> m ()
+        raceAll
+            [ healthCheck connMetrics stats (atomically . writeTQueue queue)
+            , connectServer connServer queue
+            , listenAgents connListen queue
+            ]
+
+connectServer :: (Functor m, MonadCatchIO m) => Address -> TQueue Event -> m ()
 connectServer addr queue = connect addr $ do
-    child <- forkContext $ liftIO (atomically $ readTQueue queue) >>= send
+    child <- forkContextFinally
+       (forever $ liftIO (atomically $ readTQueue queue) >>= send)
+       finish
     keepalive `finally` liftIO (killThread child)
   where
     keepalive = receive syn
@@ -121,7 +159,7 @@ connectServer addr queue = connect addr $ do
     syn Syn = logPeerRX "SYN" >> send Ack >> logPeerTX "ACK" >> keepalive
     syn _   = logPeerRX "FIN"
 
-listenAgents :: MonadCatchIO m => SockAddr -> TQueue Event -> m ()
+listenAgents :: MonadCatchIO m => Address -> TQueue Event -> m ()
 listenAgents addr queue = listen addr continue
   where
     continue = receive yield

@@ -4,6 +4,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 
 -- |
@@ -34,7 +35,7 @@ module Czar.Socket
     , receive
     , send
     , heartbeat
-    , close
+    , finish
 
     -- * Fork Contexts
     , forkContext
@@ -44,32 +45,24 @@ module Czar.Socket
     , logPeerInfo
     , logPeerTX
     , logPeerRX
-
-    -- * Parser
-    , parseAddr
     ) where
 
-import           Control.Applicative
 import           Control.Concurrent
 import           Control.Concurrent.Timer       (Timer)
 import qualified Control.Concurrent.Timer       as Timer
-import           Control.Error
 import           Control.Monad.CatchIO
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
 import           Czar.Log
 import           Czar.Protocol
+import           Czar.Types
 import qualified Network.Socket                 as Sock hiding (recv)
 import           Network.Socket                 hiding (listen, connect, accept, send, close, socket)
 import qualified Network.Socket.ByteString.Lazy as Sock
 import           System.Directory
-import           System.FilePath
-import           System.IO.Unsafe               (unsafePerformIO)
-import qualified Text.ParserCombinators.Parsec  as P
-import           Text.ParserCombinators.Parsec  hiding ((<|>), try)
 import           Text.Printf
 
-defaultAgent, defaultServer, defaultHandler :: String
+defaultAgent, defaultServer, defaultHandler :: Address
 defaultAgent   = "unix://czar-agent.sock"
 defaultHandler = "tcp://127.0.0.1:5556"
 defaultServer  = "tcp://127.0.0.1:5555"
@@ -77,8 +70,8 @@ defaultServer  = "tcp://127.0.0.1:5555"
 newtype Context m a = Context { runCtx :: ReaderT Socket m a }
     deriving (Functor, Monad, MonadCatchIO, MonadIO, MonadReader Socket)
 
-listen :: MonadCatchIO m => SockAddr -> Context IO () -> m a
-listen addr ctx = bracket open cleanup accept
+listen :: MonadCatchIO m => Address -> Context IO () -> m a
+listen (Address addr) ctx = bracket open cleanup accept
   where
     open = liftIO $ do
         sock <- Sock.socket (family addr) Stream Sock.defaultProtocol
@@ -95,14 +88,12 @@ listen addr ctx = bracket open cleanup accept
 
     accept sock = forever . liftIO $ do
         (child, _) <- Sock.accept sock
-        caddr      <- getPeerName child
+        void $ forkFinally
+            (runReaderT (runCtx ctx) child)
+            (const $ close child)
 
-        logAddr INFO caddr "accepted"
-
-        void . forkIO $ runReaderT (runCtx ctx) child
-
-connect :: MonadCatchIO m => SockAddr -> Context m a -> m a
-connect addr ctx = bracket open close $ runReaderT action
+connect :: MonadCatchIO m => Address -> Context m a -> m a
+connect (Address addr) ctx = bracket open close $ runReaderT action
   where
     open = liftIO $ do
         sock <- Sock.socket (family addr) Stream Sock.defaultProtocol
@@ -111,7 +102,7 @@ connect addr ctx = bracket open close $ runReaderT action
 
         return sock
 
-    action =  runCtx (logPeerTX "connected") >> runCtx ctx
+    action = runCtx (logPeerTX "connected") >> runCtx ctx
 
 receive :: MonadCatchIO m => (Payload -> Context m a) -> Context m a
 receive action = do
@@ -125,7 +116,7 @@ send msg = do
     sock <- socket
     liftIO . Sock.sendAll sock $ messagePut msg
 
-heartbeat :: MonadIO m => Int -> Context m Timer
+heartbeat :: MonadIO m => Seconds -> Context m Timer
 heartbeat n = do
     sock <- socket
     peer <- peerName
@@ -144,36 +135,30 @@ forkContext = (`forkContextFinally` return ())
 
 forkContextFinally :: (Functor m, MonadCatchIO m)
                    => Context IO ()
-                   -> IO ()
+                   -> Context IO ()
                    -> Context m ThreadId
 forkContextFinally ctx cleanup = do
     sock <- socket
     liftIO $ forkFinally
         (runReaderT (runCtx ctx) sock)
-        (const cleanup)
+        (const $ runReaderT (runCtx cleanup) sock)
 
 socket :: Monad m => Context m Socket
 socket = ask
 
-close :: MonadCatchIO m => Socket -> m ()
-close sock = liftIO $ do
-    p <- Sock.isConnected sock
-    when p $ Sock.close sock
+finish :: MonadCatchIO m => Context m ()
+finish = socket >>= close
 
-parseAddr :: Monad m => String -> EitherT String m SockAddr
-parseAddr str = fmapLT f . hoistEither $ parse addrGeneric "" str
-  where
-    f = (str ++) . (" " ++) . show
-
--- FIXME: Tidy this shit up
-
+logPeerInfo :: MonadIO m => String -> Context m ()
 logPeerInfo msg = peerName >>= \peer -> logAddr INFO peer msg
 
+logPeerTX :: MonadIO m => String -> Context m ()
 logPeerTX msg = do
     peer <- peerName
     name <- sockName
     logTX name peer msg
 
+logPeerRX :: MonadIO m => String -> Context m ()
 logPeerRX msg = do
     peer <- peerName
     name <- sockName
@@ -198,6 +183,11 @@ logAddr prio addr = logM prio . (peer ++)
 -- Internal
 --
 
+close :: MonadCatchIO m => Socket -> m ()
+close sock = liftIO $ do
+    p <- Sock.isConnected sock
+    when p $ Sock.close sock
+
 peerName :: MonadIO m => Context m SockAddr
 peerName = socket >>= liftIO . getPeerName
 
@@ -211,35 +201,6 @@ releaseAddr (SockAddrUnix path) = liftIO $ do
 releaseAddr _ = return ()
 
 family :: SockAddr -> Family
-family (SockAddrInet _ _)      = AF_INET
-family (SockAddrInet6 _ _ _ _) = AF_INET6
-family (SockAddrUnix _)        = AF_UNIX
-
-addrGeneric :: GenParser Char s SockAddr
-addrGeneric = do
-    s <- (string "tcp" P.<|> string "unix") <* string "://"
-    case s of
-        "tcp"  -> addrTcp
-        "unix" -> addrUnix
-        _      -> fail "Unable to parse addr"
-
-addrTcp :: GenParser Char s SockAddr
-addrTcp = do
-    h <- unsafePerformIO . inet_addr <$> addrPath
-    p <- addrPort
-    return $! SockAddrInet p h
-
-addrUnix :: GenParser Char s SockAddr
-addrUnix = do
-    p <- addrPath
-    if isValid p
-     then return $! SockAddrUnix p
-     else fail $ "Invalid unix:// socket path: " ++ p
-
-addrPort :: GenParser Char s PortNumber
-addrPort = f <$> (char ':' *> (read <$> many1 digit) <* eof)
-  where
-    f x = fromIntegral (x :: Integer)
-
-addrPath :: GenParser Char s String
-addrPath = many1 $ noneOf "!@#$%^&*()=\\/|\"',?:"
+family SockAddrInet{..}  = AF_INET
+family SockAddrInet6{..} = AF_INET6
+family SockAddrUnix{..}  = AF_UNIX

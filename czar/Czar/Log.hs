@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 -- |
 -- Module      : Car.Log
 -- Copyright   : (c) 2013 Brendan Hay <brendan.g.hay@gmail.com.com>
@@ -12,19 +10,20 @@
 -- Portability : non-portable (GHC extensions)
 
 module Czar.Log
-    ( Priority(..)
-    , scriptLogging
+    ( setLogging
     , logM
     , logInfoM
     , logInfo
     , logWarn
     , logError
     , logDebug
+
+    -- * Re-exported Types
+    , Priority(..)
     ) where
 
 import           Control.Applicative
 import           Control.Concurrent
-import           Control.Error
 import           Control.Monad.IO.Class
 import           Data.Time                 (getCurrentTime, formatTime)
 import           System.IO
@@ -36,10 +35,15 @@ import           System.Log.Logger         hiding (logM)
 import           System.Posix.Process      (getProcessID)
 import           Text.Printf
 
--- FIXME: Added debug logging and setting the log level via cli options
-
-scriptLogging :: Bool -> Script a -> IO a
-scriptLogging verbose action = runScript $ setLogging verbose >> action
+setLogging :: MonadIO m => Bool -> m ()
+setLogging debug = liftIO $ do
+    hSetBuffering stdout LineBuffering
+    hSetBuffering stderr LineBuffering
+    removeAllHandlers
+    hd <- streamHandler stderr prio
+    updateGlobalLogger logName (setLevel prio . setHandlers [formatLog hd])
+  where
+    prio = if debug then DEBUG else INFO
 
 logM :: MonadIO m => Priority -> String -> m ()
 logM prio = liftIO . L.logM logName prio
@@ -56,19 +60,6 @@ logDebug = logMsg debugM
 --
 -- Internal
 --
-
-setLogging :: MonadIO m => Bool -> m ()
-setLogging verbose = liftIO $ do
-    hSetBuffering stdout LineBuffering
-    hSetBuffering stderr LineBuffering
-
-    removeAllHandlers
-
-    hd <- streamHandler stderr prio
-
-    updateGlobalLogger logName (setLevel prio . setHandlers [formatLog hd])
-  where
-    prio = if verbose then DEBUG else INFO
 
 logName :: String
 logName = "log"

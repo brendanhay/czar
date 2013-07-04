@@ -1,6 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE TemplateHaskell   #-}
 
 -- |
 -- Module      : Main
@@ -19,60 +18,71 @@ import           Control.Concurrent                  hiding (yield)
 import           Control.Concurrent.Race
 import           Control.Concurrent.STM
 import qualified Control.Concurrent.Timer            as Timer
-import           Control.Error
 import           Control.Monad
 import           Control.Monad.CatchIO
 import           Control.Monad.IO.Class
 import           Czar.EKG
 import qualified Czar.Internal.Protocol.Subscription as S
 import           Czar.Log
+import           Czar.Options
 import           Czar.Protocol
 import           Czar.Server.Routing
 import           Czar.Socket
+import           Czar.Types
 import           Data.Foldable                       (toList)
-import           Network.Socket                      (SockAddr)
-import           Options
 
-defineOptions "ServerOpts" $ do
-    stringOption "srvAgents" "listen-agents" defaultServer
-        ""
+data Server = Server
+    { optAgents   :: Address
+    , optHandlers :: Address
+    , optTimeout  :: Seconds
+    , optMetrics  :: Seconds
+    , optDebug    :: Bool
+    }
 
-    stringOption "srvHandlers" "listen-handlers" defaultHandler
-        ""
+instance CommonOptions Server where
+    debug = optDebug
 
-    integerOption "srvHeartbeat" "heartbeat" 300
-        ""
+program :: ParserInfo Server
+program = info (helper <*> parser) $
+       fullDesc
+    <> progDesc "Start the Czar Server"
+    <> header "czar-server - a test for optparse-applicative"
+  where
+    parser = Server
+        <$> addressOption "listen" defaultServer
+                "Listen address for Czar Agent connections"
 
-    boolOption "srvVerbose" "verbose" False
-        "Be really loud."
+        <*> addressOption "publish" defaultHandler
+                "Listen address for Handler connections"
+
+        <*> secondsOption "timeout" 60
+                "Timeout for heartbeat responses before terminating a connection"
+
+        <*> secondsOption "metric-interval" 30
+                "Interval between internal metric emissions"
+
+        <*> debugSwitch
 
 main :: IO ()
-main = runCommand $ \ServerOpts{..} _ -> scriptLogging srvVerbose $ do
-    hds <- parseAddr srvHandlers
-    lst <- parseAddr srvAgents
-
+main = runProgram program $ \Server{..} -> do
     logInfo "starting server ..."
 
-    -- seconds to microseconds
-    let timeout = fromIntegral srvHeartbeat * 1000000
-        metrics = 30 * 1000000
+    routes <- liftIO emptyRoutes
+    stats  <- newStats
+        "localhost"
+        "czar.server.internal"
+        Nothing
+        ["czar-server"]
 
-    scriptIO $ do
-        routes <- liftIO emptyRoutes
-        stats  <- newStats
-            "localhost"
-            "czar.server.internal"
-            Nothing
-            ["czar-server"]
+    raceAll
+        [ healthCheck optMetrics stats $ flip notify routes
+        , listenHandlers optTimeout optHandlers routes
+        , listenAgents optTimeout optAgents routes
+        ]
 
-        healthCheck metrics routes stats
-
-        linkedRace_
-            (listenHandlers timeout hds routes)
-            (listenAgents timeout lst routes)
-
-listenHandlers :: MonadCatchIO m => Int -> SockAddr -> Routes ThreadId -> m ()
-listenHandlers n addr routes = listen addr $ receive yield
+listenHandlers :: MonadCatchIO m => Seconds -> Address -> Routes ThreadId -> m ()
+listenHandlers n addr routes =
+    listen addr $ logPeerRX "accepting handler" >> receive yield
   where
     yield (S sub@S.Subscription{..}) = do
         logPeerInfo $ "subscribing "
@@ -100,25 +110,15 @@ listenHandlers n addr routes = listen addr $ receive yield
     ack t Ack = logPeerRX "ACK" >> Timer.reset t >> keepalive t
     ack t _   = logPeerRX "FIN" >> Timer.cancel t
 
-listenAgents :: MonadCatchIO m => Int -> SockAddr -> Routes ThreadId -> m ()
-listenAgents n addr routes = listen addr $ heartbeat n >>= continue
+listenAgents :: MonadCatchIO m => Seconds -> Address -> Routes ThreadId -> m ()
+listenAgents n addr routes =
+    listen addr $ logPeerRX "accepting agent" >> heartbeat n >>= continue
   where
     continue = receive . yield
 
     yield t (E evt) = Timer.reset t >> notify evt routes >> continue t
     yield t Ack     = logPeerRX "ACK" >> Timer.reset t >> continue t
     yield t _       = logPeerRX "FIN" >> Timer.cancel t
-
-healthCheck :: (Functor m, MonadCatchIO m)
-            => Int
-            -> Routes ThreadId
-            -> Stats
-            -> m ThreadId
-healthCheck n routes stats = liftIO . forkIO . forever $ do
-    threadDelay n
-    logDebug "sampling internal stats"
-    sampleStats stats >>= flip notify routes
-
 
 -- Each socket type flips between send and receive depending on a prior state
 

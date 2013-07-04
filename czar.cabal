@@ -32,8 +32,10 @@ library
       , Czar.Internal.Protocol.Subscription
       , Czar.Internal.Protocol.Threshold
       , Czar.Log
+      , Czar.Options
       , Czar.Protocol
       , Czar.Socket
+      , Czar.Types
       , Data.MultiBiMap
 
     ghc-options:
@@ -45,6 +47,7 @@ library
         async
       , base                      >= 4 && < 5
       , bytestring
+      , configurator
       , containers
       , directory
       , ekg
@@ -56,6 +59,7 @@ library
       , mtl
       , network
       , old-locale
+      , optparse-applicative
       , parsec
       , protocol-buffers
       , protocol-buffers-descriptor
@@ -83,11 +87,9 @@ executable czar-server
         base                      >= 4 && < 5
       , bytestring
       , czar
-      , errors
       , hashable
       , MonadCatchIO-transformers
-      , network
-      , options
+      , optparse-applicative
       , stm
       , transformers
       , unordered-containers
@@ -111,11 +113,9 @@ executable czar-agent
       , containers
       , czar
       , directory
-      , errors
       , filepath
       , MonadCatchIO-transformers
       , network
-      , options
       , stm
       , text
       , transformers
@@ -137,5 +137,3 @@ executable czar-graphite
         base       >= 4 && < 5
       , containers
       , czar
-      , errors
-      , options

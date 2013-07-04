@@ -27,6 +27,7 @@ import           Control.Monad
 import           Control.Monad.IO.Class
 import qualified Czar.Internal.Protocol.Event as E
 import           Czar.Protocol
+import           Czar.Types
 import           Data.Configurator
 import           Data.Configurator.Types
 import qualified Data.HashMap.Lazy            as H
@@ -46,26 +47,26 @@ data Check = Check
     { chkName     :: !Text
     , chkDesc     :: !(Maybe Text)
     , chkCommand  :: !Text
-    , chkInterval :: !Int
+    , chkInterval :: !Seconds
     , chkTags     :: ![Text]
     } deriving (Eq, Ord, Show)
 
 loadChecks :: MonadIO m => [FilePath] -> m [Check]
 loadChecks paths = liftIO $ loadConfig paths >>= parseChecks
 
-forkChecks :: MonadIO m => Integer -> TQueue Event -> [Check] -> m ()
+forkChecks :: MonadIO m => Seconds -> TQueue Event -> [Check] -> m ()
 forkChecks splay queue cs = liftIO $ zipWithM fork cs steps >>= mapM_ link
   where
     fork Check{..} n = async $ do
         threadDelay n
         forever $ do
-            threadDelay $ chkInterval * 1000000
+            threadDelay $ toInt chkInterval
 
             let evt = E.Event 0 (enc chkName) "key" (enc <$> chkDesc) (Seq.fromList []) (Seq.fromList []) (Seq.fromList [])
 
             atomically $ writeTQueue queue evt
 
-    steps = scanl1 (+) . repeat $ fromIntegral splay * 10000
+    steps = scanl1 (+) . repeat $ toInt splay
     enc   = Utf8 . LE.encodeUtf8 . LT.fromStrict
 
 --

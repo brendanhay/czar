@@ -1,5 +1,3 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-
 -- |
 -- Module      : Control.Concurrent.MTimer
 -- Copyright   : (c) 2013 Brendan Hay <brendan.g.hay@gmail.com.com>
@@ -15,21 +13,24 @@ module Control.Concurrent.Timer where
 
 import Control.Concurrent
 import Control.Monad.IO.Class
+import Czar.Types
 import Data.IORef
 
 data Timer = Timer !(IORef Bool) !ThreadId
 
-start :: MonadIO m => Int -> IO () -> IO () -> m Timer
+start :: MonadIO m => Seconds -> IO () -> IO () -> m Timer
 start n action cleanup = liftIO $ do
     ref <- newIORef False
-    tid <- forkIO $ threadDelay n >> run ref
+    tid <- forkIO $ threadDelay delay >> run ref
     return $! Timer ref tid
   where
     run ref = do
-        p <- action >> threadDelay n >> readIORef ref
+        p <- action >> threadDelay delay >> readIORef ref
         if p
          then run ref
          else cleanup
+
+    delay = toInt n
 
 reset :: MonadIO m => Timer -> m ()
 reset (Timer ref _) = liftIO $ atomicWriteIORef ref True

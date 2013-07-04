@@ -17,7 +17,7 @@ module Czar.EKG
     ( Stats
 
     , newStats
-    , sampleStats
+    , healthCheck
 
     -- * Re-exported
     , getCounter
@@ -27,18 +27,18 @@ module Czar.EKG
 
 import           Control.Applicative
 import           Control.Concurrent
+import           Control.Monad
 import           Control.Monad.IO.Class
 import qualified Czar.Internal.Protocol.Event     as E
 import qualified Czar.Internal.Protocol.Metric    as M
 import qualified Czar.Internal.Protocol.Threshold as T
+import           Czar.Log
 import           Czar.Protocol
-import qualified Data.ByteString.Lazy.Char8       as LBS
-import           Data.Foldable                    (toList)
+import           Czar.Types
 import qualified Data.HashMap.Strict              as Map
 import           Data.IORef
 import           Data.Maybe
 import qualified Data.Sequence                    as Seq
-import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as LT
 import qualified Data.Text.Lazy.Encoding          as LT
 import           Data.Time.Clock.POSIX
@@ -70,6 +70,22 @@ newStats host key desc tags =
         <*> newIORef Map.empty
         <*> newIORef Map.empty
 
+healthCheck :: (Functor m, MonadIO m)
+            => Seconds
+            -> Stats
+            -> (E.Event -> m a)
+            -> m a
+healthCheck n stats action = forever $ do
+    liftIO $ threadDelay delay
+    logDebug "sampling internal stats"
+    sampleStats stats >>= action
+  where
+    delay = toInt n
+
+--
+-- Internal
+--
+
 sampleStats :: MonadIO m => Stats -> m E.Event
 sampleStats Stats{..} = liftIO $ do
     time <- truncate <$> getPOSIXTime
@@ -91,17 +107,13 @@ sampleStats Stats{..} = liftIO $ do
 
     fromText = Utf8 . LT.encodeUtf8 . LT.fromStrict
 
---
--- Internal
---
-
 newMetric :: Int64 -> Utf8 -> EKG.Metric -> Maybe M.Metric
 newMetric time key metric = do
     (typ, val) <- case metric of
         (EKG.Counter n) -> Just ("c", n)
         (EKG.Gauge n)   -> Just ("g", n)
         _               -> Nothing
-    return $! M.Metric
+    return M.Metric
         { M.time     = time
         , M.type'    = Just typ
         , M.key      = key
@@ -113,5 +125,6 @@ newMetric time key metric = do
     toDouble (I i) = fromIntegral i
     toDouble (D d) = d
 
+toSeq :: [ByteString] -> Seq Utf8
 toSeq = Seq.fromList . map Utf8
 

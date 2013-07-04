@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell   #-}
 
 -- |
 -- Module      : Main
@@ -16,41 +15,56 @@
 
 module Main (main) where
 
-import           Control.Error
 import qualified Czar.Internal.Protocol.Event        as E
 import           Czar.Internal.Protocol.Subscription
 import           Czar.Log
+import           Czar.Options
 import           Czar.Protocol
 import           Czar.Socket
+import           Czar.Types
 import qualified Data.Sequence                       as Seq
-import           Options
 
-defineOptions "HandlerOpts" $ do
-    stringOption "hdServer" "server" defaultHandler
-        "Server for the handler to connect to."
+data Handler = Handler
+    { hdServer   :: Address
+    , hdGraphite :: Address
+    , hdTags     :: [String]
+    , hdDebug    :: Bool
+    }
 
-    boolOption "hdVerbose" "verbose" False
-        "Be really loud."
+instance CommonOptions Handler where
+    debug = hdDebug
+
+program :: ParserInfo Handler
+program = info (helper <*> parser) $
+       fullDesc
+    <> progDesc "Start the Czar Server"
+    <> header "czar-server - a test for optparse-applicative"
+  where
+    parser = Handler
+        <$> addressOption "server" defaultHandler
+                "Czar Server address to connect to"
+
+        <*> addressOption "graphite" "unix://graphite.sock"
+                "Graphite address to write metrics to"
+
+        <*> stringsOption "tags" ["*"]
+                "Tags to subscribe to"
+
+        <*> debugSwitch
 
 main :: IO ()
-main = runCommand $ \HandlerOpts{..} _ -> scriptLogging hdVerbose $ do
-    addr <- parseAddr hdServer
-
+main = runProgram program $ \Handler{..} -> do
     logInfo "starting graphite handler ..."
-
-    scriptIO . connect addr $ do
-        logPeerTX $ "sending subscription for " ++ show tags
-
-        send sub
-
+    connect hdServer $ do
+        logPeerTX $ "sending subscription for " ++ show hdTags
+        send $ sub hdTags
         continue
   where
     sub = Subscription
         "graphite"
         (Just "Graphite Handler")
-        (Seq.fromList tags)
-
-    tags = ["*"]
+        . Seq.fromList
+        . map fromString
 
     continue = receive yield
 

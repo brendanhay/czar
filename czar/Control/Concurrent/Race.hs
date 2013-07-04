@@ -11,23 +11,18 @@
 
 module Control.Concurrent.Race where
 
+import Control.Applicative
 import Control.Concurrent.Async
 import Control.Monad
 import Control.Monad.IO.Class
 import System.Posix.Signals
 
-linkedRace_ :: MonadIO m => IO a -> IO b -> m ()
-linkedRace_ left right = linkedRace left right >> return ()
-
-linkedRace :: MonadIO m => IO a -> IO b -> m (Either a b)
-linkedRace left right = liftIO $ do
-    a <- async left
-    b <- async right
-
-    link2 a b
+raceAll :: MonadIO m => [IO a] -> m a
+raceAll xs = liftIO $ do
+    ys <- mapM async xs
 
     void $ installHandler sigINT
-        (CatchOnce $ cancel a >> cancel b)
+        (CatchOnce $ mapM_ cancel ys)
         (Just emptySignalSet)
 
-    waitEither a b
+    snd <$> waitAnyCancel ys
