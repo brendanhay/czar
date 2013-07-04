@@ -93,6 +93,7 @@ listenHandlers n addr routes =
         parent <- liftIO myThreadId
         queue  <- liftIO $ subscribe sub parent routes
         timer  <- heartbeat n
+
         child  <- forkContextFinally
             (forever $ do
                 evt <- liftIO . atomically $ readTQueue queue
@@ -100,7 +101,6 @@ listenHandlers n addr routes =
             (do logInfo $ "unsubscribing " ++ show parent
                 unsubscribe parent routes)
 
-        -- block on keepalive in the main thread
         keepalive timer `finally` liftIO (killThread child)
 
     yield _ = return ()
