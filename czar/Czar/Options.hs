@@ -1,7 +1,8 @@
 {-# OPTIONS_GHC -fno-warn-missing-signatures #-}
 {-# LANGUAGE FlexibleInstances               #-}
 {-# LANGUAGE TypeSynonymInstances            #-}
-{-# LANGUAGE ScopedTypeVariables               #-}
+{-# LANGUAGE ScopedTypeVariables             #-}
+{-# LANGUAGE TemplateHaskell                 #-}
 
 -- |
 -- Module      : Czar.Options
@@ -15,71 +16,41 @@
 -- Portability : non-portable (GHC extensions)
 
 module Czar.Options
-    -- * Class to define common options
-    ( CommonOptions(..)
-
-    , runProgram
-
     -- * Option Constructors
-    , debugSwitch
+    ( debugSwitch
     , addressOption
     , secondsOption
-    , stringOption
-    , stringsOption
 
     -- * Re-exported Modules
     , module Opts
     ) where
 
-import           Control.Applicative
-import           Control.Error                        hiding (err)
-import           Czar.Log
-import           Czar.Types
-import           Data.Monoid
-import           Options.Applicative                  as Opts
-import           Options.Applicative.Builder.Internal
-import           Options.Applicative.Types            as Opts
-import qualified Text.ParserCombinators.Parsec        as P
+import Czar.Types
+import Language.Haskell.TH
+import Options             as Opts
+import Options.OptionTypes
 
-class CommonOptions a where
-    debug :: a -> Bool
+debugSwitch :: OptionsM ()
+debugSwitch = boolOption "optDebug" "debug" False "Log debug output"
 
-runProgram :: CommonOptions a => ParserInfo a -> (a -> IO b) -> IO b
-runProgram parser io = do
-   opts <- execParser parser
-   setLogging $ debug opts
-   io opts
+addressOption :: String -> String -> Address -> String -> OptionsM ()
+addressOption = createOption
+    (OptionType (ConT ''Address) False parseAddress [| parseAddress |])
 
-debugSwitch :: Parser Bool
-debugSwitch = switch (long "debug" <> help "Log debug output")
-
-addressOption :: String -> Address -> String -> Parser Address
-addressOption = create "ADDR" (reader (fmapL ErrorMsg . parseAddress))
-
-secondsOption :: String -> Seconds -> String -> Parser Seconds
-secondsOption = create "SECONDS" (reader (fmap fromInteger . auto))
-
-stringOption :: String -> String -> String -> Parser String
-stringOption = create "STR" (reader auto)
-
-stringsOption :: String -> [String] -> String -> Parser [String]
-stringsOption = create "[STR,STR,...]" (reader parser)
-  where
-    parser :: String -> Either ParseError [String]
-    parser s = err `fmapL` P.parse list "" s
-      where
-        list = P.char '['
-            *> P.sepBy1 (P.spaces *> P.many1 (P.noneOf "[]," <* P.spaces)) (P.char ',')
-            <* P.char ']'
-
-        err = const . ErrorMsg $ "Unable to parse `" ++ s
-            ++ "', please ensure it is of the format: [STR, STR, ...]"
+secondsOption :: String -> String -> Seconds -> String -> OptionsM ()
+secondsOption = createOption
+    (OptionType (ConT ''Seconds) False parseSeconds [| parseSeconds |])
 
 --
 -- Internal
 --
 
-create :: String -> Mod OptionFields a -> String -> a -> String -> Parser a
-create var extra key val text =
-    nullOption $ metavar var <> long key <> help text <> value val <> extra
+createOption :: Show a => OptionType a -> String -> String -> a -> String -> OptionsM ()
+createOption type' name flag def desc =
+    option name $ \o -> o
+        { optionLongFlags   = [flag]
+        , optionDefault     = show def
+        , optionType        = type'
+        , optionDescription = desc
+        }
 

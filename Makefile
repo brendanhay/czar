@@ -2,7 +2,7 @@
 # Vars
 #
 
-DEPS := vendor/ekg czar/Czar/Internal/Protocol.hs
+DEPS := vendor/ekg vendor/options czar/Czar/Internal/Protocol.hs
 
 #
 # Default
@@ -49,3 +49,6 @@ czar/Czar/Internal/Protocol.hs: lib/czar.proto
 
 vendor/ekg:
 	git clone git@github.com:brendanhay/ekg.git $@
+
+vendor/options:
+	git clone git@github.com:brendanhay/options.git $@

@@ -1,4 +1,5 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE RecordWildCards            #-}
 
 -- |
 -- Module      : Main
@@ -13,6 +14,7 @@
 
 module Czar.Types
     ( Seconds
+    , parseSeconds
     , toInt
 
     , Address(..)
@@ -24,21 +26,33 @@ import           Control.Error
 import           Data.Configurator.Types
 import           Data.String
 import           Network.Socket
+import           Options.OptionTypes
 import           System.FilePath
 import           System.IO.Unsafe              (unsafePerformIO)
 import qualified Text.ParserCombinators.Parsec as P
 import           Text.ParserCombinators.Parsec hiding ((<|>), try)
 
-newtype Seconds = Seconds Int deriving (Eq, Ord, Num, Show)
+newtype Seconds = Seconds Int deriving (Eq, Ord, Num)
+
+instance Show Seconds where
+    show (Seconds n) = show n
 
 instance Configured Seconds where
     convert (Number n) = Just . Seconds $ ceiling (fromRational n :: Double)
     convert _          = Nothing
 
+parseSeconds :: String -> Either String Seconds
+parseSeconds = fmap fromInteger . parseInteger
+
 toInt :: Seconds -> Int
 toInt (Seconds n) = n * 1000000
 
-newtype Address = Address SockAddr deriving (Show)
+newtype Address = Address SockAddr
+
+instance Show Address where
+    show (Address addr) = case addr of
+        SockAddrUnix{..} -> "unix://" ++ show addr
+        _                -> "tcp://" ++ show addr
 
 instance Read Address where
     readsPrec _ = either

@@ -1,8 +1,8 @@
-{-# OPTIONS_GHC -fno-warn-missing-signatures #-}
-{-# LANGUAGE ConstraintKinds                 #-}
-{-# LANGUAGE OverloadedStrings               #-}
-{-# LANGUAGE RecordWildCards                 #-}
-{-# LANGUAGE ScopedTypeVariables             #-}
+{-# LANGUAGE ConstraintKinds     #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell     #-}
 
 -- |
 -- Module      : Main
@@ -36,81 +36,46 @@ import           Data.String
 import qualified Data.Text                    as T
 import           Network.BSD                  hiding (hostName)
 
-data Send = Send
-    { sendAgent :: Address
-    , sendTags  :: [String]
-    , sendDebug :: Bool
-    }
+defineOptions "Main" debugSwitch
 
-data Connect = Connect
-    { connListen  :: Address
-    , connServer  :: Address
-    , connHost    :: String
-    , connMetrics :: Seconds
-    , connChecks  :: [FilePath]
-    , connSplay   :: Seconds
-    , connTags    :: [String]
-    , connDebug   :: Bool
-    }
+defineOptions "Send" $ do
+    addressOption "sendAgent" "agent" defaultAgent
+        "Czar Agent address to connect to"
 
-data Command
-    = S Send
-    | C Connect
+    stringsOption "sendTags" "tags" []
+        "Comma separated list to tags to annotate the event"
 
-instance CommonOptions Command where
-    debug (S s) = sendDebug s
-    debug (C c) = connDebug c
+defineOptions "Connect" $ do
+    addressOption "connListen" "listen" defaultAgent
+        "Listen address for Czar Agent connections"
 
-sendCommand = command "send" . info (S <$> parser) $ progDesc ""
-  where
-    parser = Send
-        <$> addressOption "agent" defaultAgent
-                "Czar Agent address to connect to"
+    addressOption "connServer" "server" defaultServer
+        "Czar Server address to connect to"
 
-        <*> stringsOption "tags" []
-                "Comma separated list to tags to annotate the event"
+    stringOption "connHost" "host" ""
+        "Hostname used to identify the machine (auto-determined if blank)"
 
-        <*> debugSwitch
+    secondsOption "connMetrics" "metrics-interval" 30
+        "Interval between internal metric emissions"
 
-connectCommand = command "connect" . info (C <$> parser) $ progDesc ""
-  where
-    parser = Connect
-        <$> addressOption "listen" defaultAgent
-                "Listen address for Czar Agent connections"
+    stringsOption "connChecks" "checks" ["etc/czar/checks.list.d"]
+        "Comma separated list of files or directories containing check config"
 
-        <*> addressOption "server" defaultServer
-                "Czar Agent address to connect to"
+    secondsOption "connSplay" "splay" 1
+        "Stagger check start times by this number of seconds"
 
-        <*> stringOption "host" ""
-                "Hostname used to identify the machine (auto-determined if blank)"
-
-        <*> secondsOption "metrics-interval" 30
-                "Interval between internal metric emissions"
-
-        <*> stringsOption "checks" ["etc/czar/checks.list.d"]
-                "Comma separated list of files or directories containing check config"
-
-        <*> secondsOption "splay" 1
-                "Stagger check start times by this number of seconds"
-
-        <*> stringsOption "tags" []
-                "Comma separated list of tags to prepend to every event"
-
-        <*> debugSwitch
-
-program :: ParserInfo Command
-program = info (helper <*> subparser (sendCommand <> connectCommand)) $
-       fullDesc
-    <> progDesc "asdsad"
-    <> header "adsdas"
+    stringsOption "connTags" "tags" []
+        "Comma separated list of tags to prepend to every event"
 
 main :: IO ()
-main = runProgram program $ \opts ->
-    case opts of
-        S s -> runSend s
-        C c -> runConnect c
+main = runSubcommand
+    [ subcommand "send" (run send')
+    , subcommand "connect" (run connect')
+    ]
   where
-    runSend Send{..} = do
+    run f Main{..} opts _ = setLogging optDebug >> f opts
+
+    send' Send{..} = do
         logInfo "connecting to agent ..."
 
         connect sendAgent $ do
@@ -119,7 +84,7 @@ main = runProgram program $ \opts ->
 
         logInfo "Done."
 
-    runConnect Connect{..} = do
+    connect' Connect{..} = do
         host <- if null connHost
                 then liftIO getHostName
                 else return connHost

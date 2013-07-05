@@ -1,6 +1,7 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell     #-}
 
 -- |
 -- Module      : Main
@@ -21,39 +22,23 @@ import           Czar.Log
 import           Czar.Options
 import           Czar.Protocol
 import           Czar.Socket
-import           Czar.Types
 import qualified Data.Sequence                       as Seq
 
-data Handler = Handler
-    { hdServer   :: Address
-    , hdGraphite :: Address
-    , hdTags     :: [String]
-    , hdDebug    :: Bool
-    }
+defineOptions "Handler" $ do
+    addressOption "hdServer" "server" defaultHandler
+        "Czar Server address to connect to"
 
-instance CommonOptions Handler where
-    debug = hdDebug
+    addressOption "hdGraphite" "graphite" "unix://graphite.sock"
+        "Graphite address to write metrics to"
 
-program :: ParserInfo Handler
-program = info (helper <*> parser) $
-       fullDesc
-    <> progDesc "Start the Czar Server"
-    <> header "czar-server - a test for optparse-applicative"
-  where
-    parser = Handler
-        <$> addressOption "server" defaultHandler
-                "Czar Server address to connect to"
+    stringsOption "hdTags" "tags" ["*"]
+        "Tags to subscribe to"
 
-        <*> addressOption "graphite" "unix://graphite.sock"
-                "Graphite address to write metrics to"
-
-        <*> stringsOption "tags" ["*"]
-                "Tags to subscribe to"
-
-        <*> debugSwitch
+    debugSwitch
 
 main :: IO ()
-main = runProgram program $ \Handler{..} -> do
+main = runCommand $ \Handler{..} _ -> do
+    setLogging optDebug
     logInfo "starting graphite handler ..."
     connect hdServer $ do
         logPeerTX $ "sending subscription for " ++ show hdTags

@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE TemplateHaskell   #-}
 
 -- |
 -- Module      : Main
@@ -31,40 +32,24 @@ import           Czar.Socket
 import           Czar.Types
 import           Data.Foldable                       (toList)
 
-data Server = Server
-    { optAgents   :: Address
-    , optHandlers :: Address
-    , optTimeout  :: Seconds
-    , optMetrics  :: Seconds
-    , optDebug    :: Bool
-    }
+defineOptions "Server" $ do
+    addressOption "optAgents" "listen" defaultServer
+        "Listen address for Czar Agent connections"
 
-instance CommonOptions Server where
-    debug = optDebug
+    addressOption "optHandlers" "publish" defaultHandler
+        "Listen address for Handler connections"
 
-program :: ParserInfo Server
-program = info (helper <*> parser) $
-       fullDesc
-    <> progDesc "Start the Czar Server"
-    <> header "czar-server - a test for optparse-applicative"
-  where
-    parser = Server
-        <$> addressOption "listen" defaultServer
-                "Listen address for Czar Agent connections"
+    secondsOption "optTimeout" "timeout" 60
+        "Timeout for heartbeat responses before terminating a connection"
 
-        <*> addressOption "publish" defaultHandler
-                "Listen address for Handler connections"
+    secondsOption "optMetrics" "metric-interval" 30
+        "Interval between internal metric emissions"
 
-        <*> secondsOption "timeout" 60
-                "Timeout for heartbeat responses before terminating a connection"
-
-        <*> secondsOption "metric-interval" 30
-                "Interval between internal metric emissions"
-
-        <*> debugSwitch
+    debugSwitch
 
 main :: IO ()
-main = runProgram program $ \Server{..} -> do
+main = runCommand $ \Server{..} _ -> do
+    setLogging optDebug
     logInfo "starting server ..."
 
     routes <- liftIO emptyRoutes

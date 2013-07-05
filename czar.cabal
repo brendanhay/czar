@@ -59,11 +59,12 @@ library
       , mtl
       , network
       , old-locale
-      , optparse-applicative
+      , options
       , parsec
       , protocol-buffers
       , protocol-buffers-descriptor
       , stm
+      , template-haskell
       , text
       , time
       , transformers
@@ -89,7 +90,6 @@ executable czar-server
       , czar
       , hashable
       , MonadCatchIO-transformers
-      , optparse-applicative
       , stm
       , transformers
       , unordered-containers
