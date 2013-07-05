@@ -34,18 +34,17 @@ commonOptions "Handler" $ do
     addressOption "hdServer" "server" defaultHandler
         "Czar Server address to connect to"
 
-    addressOption "hdGraphite" "graphite" "unix://graphite.sock"
-        "Graphite address to write metrics to"
-
     stringsOption "hdTags" "tags" ["*"]
         "Tags to subscribe to"
 
     secondsOption "optEmission" "metric-frequency" 30
         "Frequency of internal metric emissions"
 
+-- FIXME: abstract the start, heartbeat, and metrics sending parts
+
 main :: IO ()
 main = runProgram $ \Handler{..} -> do
-    logInfo "starting graphite handler ..."
+    logInfo "starting pagerduty handler ..."
 
     connect hdServer $ do
         logPeerTX $ "sending subscription for " ++ show hdTags
@@ -54,9 +53,9 @@ main = runProgram $ \Handler{..} -> do
         queue  <- liftIO $ atomically newTQueue
         stats  <- newStats
             "localhost"
-            "czar.graphite"
+            "czar.pagerduty"
             Nothing
-            ["czar-graphite"]
+            ["czar-pagerduty"]
 
         health <- liftIO . forkIO $ healthCheck optEmission stats
             (atomically . writeTQueue queue)
@@ -68,7 +67,7 @@ main = runProgram $ \Handler{..} -> do
         continue `finally` liftIO (killThread health >> killThread sender)
   where
     subscribe = send
-        . Subscription "graphite" (Just "Graphite Handler")
+        . Subscription "pagerduty" (Just "Pager Duty Handler")
         . Seq.fromList
         . map fromString
 

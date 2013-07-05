@@ -16,7 +16,7 @@ all: build lint
 
 build: .conf $(DEPS)
 	cabal-dev build && \
-	 $(MAKE) bin/czar-server bin/czar-agent bin/czar-graphite
+	 $(MAKE) bin/czar-server bin/czar-agent bin/czar-graphite bin/czar-pagerduty
 
 install: $(DEPS)
 	cabal-meta install -j \
@@ -32,7 +32,7 @@ clean:
 #
 
 lint:
-	hlint czar-agent czar-server
+	hlint czar-agent czar-server czar-graphite czar-pagerduty
 
 #
 # Patterns
@@ -47,8 +47,5 @@ bin/%:
 czar/Czar/Internal/Protocol.hs: lib/czar.proto
 	hprotoc -I lib -p Czar.Internal -d czar -v $<
 
-vendor/ekg:
-	git clone git@github.com:brendanhay/ekg.git $@
-
-vendor/options:
-	git clone git@github.com:brendanhay/options.git $@
+vendor/%:
+	git clone git@github.com:brendanhay/$*.git $@

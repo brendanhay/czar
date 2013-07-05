@@ -36,7 +36,7 @@ import           Data.String
 import qualified Data.Text                    as T
 import           Network.BSD                  hiding (hostName)
 
-defineOptions "Main" debugOption
+commonOptions "Main" $ return ()
 
 defineOptions "Send" $ do
     addressOption "sendAgent" "agent" defaultAgent
@@ -67,7 +67,8 @@ defineOptions "Connect" $ do
     stringsOption "connTags" "tags" []
         "Comma separated list of tags to prepend to every event"
 
-    emissionOption
+    secondsOption "optEmission" "metric-frequency" 30
+        "Frequency of internal metric emissions"
 
 main :: IO ()
 main = runSubcommand
@@ -75,7 +76,7 @@ main = runSubcommand
     , subcommand "connect" (run connect')
     ]
   where
-    run f Main{..} opts _ = setLogging optDebug >> f opts
+    run f Main{..} opts _ = f opts
 
     send' Send{..} = do
         logInfo "connecting to agent ..."
@@ -104,7 +105,7 @@ main = runSubcommand
 
         stats  <- newStats
             (fromString host)
-            "czar.agent.internal"
+            "czar.agent"
             Nothing
             ["czar-agent"]
 

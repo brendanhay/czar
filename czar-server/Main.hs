@@ -32,30 +32,27 @@ import           Czar.Socket
 import           Czar.Types
 import           Data.Foldable                       (toList)
 
-defineOptions "Server" $ do
-    addressOption "optAgents" "listen" defaultServer
+commonOptions "Server" $ do
+    addressOption "optAgents" "agents" defaultServer
         "Listen address for Czar Agent connections"
 
-    addressOption "optHandlers" "publish" defaultHandler
+    addressOption "optHandlers" "handlers" defaultHandler
         "Listen address for Handler connections"
 
     secondsOption "optTimeout" "timeout" 60
         "Timeout for heartbeat responses before terminating a connection"
 
-    emissionOption
-
-    debugOption
+    secondsOption "optEmission" "metric-frequency" 30
+        "Frequency of internal metric emissions"
 
 main :: IO ()
-main = runCommand $ \Server{..} _ -> do
-    setLogging optDebug
-
+main = runProgram $ \Server{..} -> do
     logInfo "starting server ..."
 
     routes <- liftIO emptyRoutes
     stats  <- newStats
         "localhost"
-        "czar.server.internal"
+        "czar.server"
         Nothing
         ["czar-server"]
 
@@ -66,6 +63,12 @@ main = runCommand $ \Server{..} _ -> do
         ]
 
 -- FIXME: Error or wipe old subscription if a handler sends it twice
+
+-- should:
+--  the server determine + annotate events based on thresholds -> less subscription traffic, less concurrency, more cpu
+--  handlers subscribe to all and do whatever -> more traffic, less server cpu
+
+-- answer: keep server simple, handlers can just use wildcard
 
 listenHandlers :: MonadCatchIO m => Seconds -> Address -> Routes ThreadId -> m ()
 listenHandlers n addr routes =
@@ -89,8 +92,7 @@ listenHandlers n addr routes =
                 unsubscribe parent routes)
 
         continue timer `finally` liftIO (killThread child)
-
-    handshake _ = return ()
+    handshake _ = logPeerRX "FIN"
 
     continue = receive . yield
 

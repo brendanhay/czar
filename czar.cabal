@@ -33,10 +33,12 @@ library
       , Czar.Internal.Protocol.Threshold
       , Czar.Log
       , Czar.Options
+      , Czar.Options.Internal
       , Czar.Protocol
       , Czar.Socket
       , Czar.Types
       , Data.MultiBiMap
+      , Paths_czar
 
     ghc-options:
         -Wall
@@ -125,6 +127,26 @@ executable czar-graphite
     default-language:  Haskell2010
     main-is:           Main.hs
     hs-source-dirs:    czar-graphite
+
+    ghc-options:
+        -threaded
+        -Wall
+        -fwarn-tabs
+        -funbox-strict-fields
+        -with-rtsopts=-T
+
+    build-depends:
+        base                      >= 4 && < 5
+      , containers
+      , czar
+      , MonadCatchIO-transformers
+      , stm
+      , transformers
+
+executable czar-pagerduty
+    default-language:  Haskell2010
+    main-is:           Main.hs
+    hs-source-dirs:    czar-pagerduty
 
     ghc-options:
         -threaded

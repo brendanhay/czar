@@ -1,8 +1,5 @@
-{-# OPTIONS_GHC -fno-warn-missing-signatures #-}
-{-# LANGUAGE FlexibleInstances               #-}
-{-# LANGUAGE TypeSynonymInstances            #-}
-{-# LANGUAGE ScopedTypeVariables             #-}
-{-# LANGUAGE TemplateHaskell                 #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 -- |
 -- Module      : Czar.Options
@@ -17,48 +14,48 @@
 
 module Czar.Options
     -- * Option Declarations
-    ( debugOption
-    , emissionOption
-
-    -- * Option Constructors
-    , addressOption
-    , secondsOption
+    ( commonOptions
+    , runProgram
 
     -- * Re-exported Modules
+    , module Int
     , module Opts
     ) where
 
-import Czar.Types
+import Control.Applicative
+import Control.Monad
+import Control.Monad.IO.Class
+import Czar.Log
+import Czar.Options.Internal  as Int
+import Data.Version
 import Language.Haskell.TH
-import Options             as Opts
-import Options.OptionTypes
+import Options                as Opts hiding (stringOption, stringsOption)
+import Paths_czar             (version)
 
-debugOption :: OptionsM ()
-debugOption = boolOption "optDebug" "debug" False
-    "Log debug output"
+defineOptions "Common" $ do
+    boolOption "optDebug" "debug" False
+        "Log debug output"
 
-emissionOption :: OptionsM ()
-emissionOption = secondsOption "optEmission" "emit-every" 30
-    "Interval between internal metric emissions"
+    boolOption "optVersion" "version" False
+        "Show version information"
 
-addressOption :: String -> String -> Address -> String -> OptionsM ()
-addressOption = createOption
-    (OptionType (ConT ''Address) False parseAddress [| parseAddress |])
+class CommonOptions a where
+    getCommon :: a -> Common
 
-secondsOption :: String -> String -> Seconds -> String -> OptionsM ()
-secondsOption = createOption
-    (OptionType (ConT ''Seconds) False parseSeconds [| parseSeconds |])
+commonOptions :: String -> OptionsM () -> Q [Dec]
+commonOptions name rest = (decl :) <$> opts
+  where
+    decl = InstanceD [] (AppT (ConT ''CommonOptions) (ConT $ mkName name))
+        [ValD (VarP 'getCommon) (NormalB . VarE $ mkName "optCommon") []]
 
---
--- Internal
---
+    opts = defineOptions name $
+        options "optCommon" (importedOptions :: ImportedOptions Common) >> rest
 
-createOption :: Show a => OptionType a -> String -> String -> a -> String -> OptionsM ()
-createOption type' name flag def desc =
-    option name $ \o -> o
-        { optionLongFlags   = [flag]
-        , optionDefault     = show def
-        , optionType        = type'
-        , optionDescription = desc
-        }
+runProgram :: (MonadIO m, Options a, CommonOptions a) => (a -> m b) -> m b
+runProgram action = runCommand $ \opts _ -> do
+    let Common{..} = getCommon opts
 
+    when optVersion . liftIO $ do
+        putStrLn $ showVersion version
+
+    setLogging optDebug >> action opts
