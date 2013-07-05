@@ -16,8 +16,11 @@
 -- Portability : non-portable (GHC extensions)
 
 module Czar.Options
+    -- * Option Declarations
+    ( debugOption
+    , emissionOption
+
     -- * Option Constructors
-    ( debugSwitch
     , addressOption
     , secondsOption
 
@@ -30,8 +33,13 @@ import Language.Haskell.TH
 import Options             as Opts
 import Options.OptionTypes
 
-debugSwitch :: OptionsM ()
-debugSwitch = boolOption "optDebug" "debug" False "Log debug output"
+debugOption :: OptionsM ()
+debugOption = boolOption "optDebug" "debug" False
+    "Log debug output"
+
+emissionOption :: OptionsM ()
+emissionOption = secondsOption "optEmission" "emit-every" 30
+    "Interval between internal metric emissions"
 
 addressOption :: String -> String -> Address -> String -> OptionsM ()
 addressOption = createOption

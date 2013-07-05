@@ -21,7 +21,7 @@ library
 
     exposed-modules:
         Control.Concurrent.Race
-      , Control.Concurrent.Timer
+      , Control.Concurrent.Timeout
       , Czar.EKG
       , Czar.Internal.Protocol
       , Czar.Internal.Protocol.Attribute
@@ -134,6 +134,9 @@ executable czar-graphite
         -with-rtsopts=-T
 
     build-depends:
-        base       >= 4 && < 5
+        base                      >= 4 && < 5
       , containers
       , czar
+      , MonadCatchIO-transformers
+      , stm
+      , transformers

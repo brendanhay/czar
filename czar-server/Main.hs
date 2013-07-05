@@ -18,7 +18,7 @@ module Main (main) where
 import           Control.Concurrent                  hiding (yield)
 import           Control.Concurrent.Race
 import           Control.Concurrent.STM
-import qualified Control.Concurrent.Timer            as Timer
+import qualified Control.Concurrent.Timeout          as Timeout
 import           Control.Monad
 import           Control.Monad.CatchIO
 import           Control.Monad.IO.Class
@@ -42,14 +42,14 @@ defineOptions "Server" $ do
     secondsOption "optTimeout" "timeout" 60
         "Timeout for heartbeat responses before terminating a connection"
 
-    secondsOption "optMetrics" "metric-interval" 30
-        "Interval between internal metric emissions"
+    emissionOption
 
-    debugSwitch
+    debugOption
 
 main :: IO ()
 main = runCommand $ \Server{..} _ -> do
     setLogging optDebug
+
     logInfo "starting server ..."
 
     routes <- liftIO emptyRoutes
@@ -60,16 +60,18 @@ main = runCommand $ \Server{..} _ -> do
         ["czar-server"]
 
     raceAll
-        [ healthCheck optMetrics stats $ flip notify routes
+        [ healthCheck optEmission stats $ flip notify routes
         , listenHandlers optTimeout optHandlers routes
         , listenAgents optTimeout optAgents routes
         ]
 
+-- FIXME: Error or wipe old subscription if a handler sends it twice
+
 listenHandlers :: MonadCatchIO m => Seconds -> Address -> Routes ThreadId -> m ()
 listenHandlers n addr routes =
-    listen addr $ logPeerRX "accepting handler" >> receive yield
+    listen addr $ logPeerRX "accepting handler" >> receive handshake
   where
-    yield (S sub@S.Subscription{..}) = do
+    handshake (S sub@S.Subscription{..}) = do
         logPeerInfo $ "subscribing "
             ++ uToString identity
             ++ " handler to "
@@ -86,14 +88,15 @@ listenHandlers n addr routes =
             (do logInfo $ "unsubscribing " ++ show parent
                 unsubscribe parent routes)
 
-        keepalive timer `finally` liftIO (killThread child)
+        continue timer `finally` liftIO (killThread child)
 
-    yield _ = return ()
+    handshake _ = return ()
 
-    keepalive = receive . ack
+    continue = receive . yield
 
-    ack t Ack = logPeerRX "ACK" >> Timer.reset t >> keepalive t
-    ack t _   = logPeerRX "FIN" >> Timer.cancel t
+    yield t (E evt) = Timeout.reset t >> notify evt routes >> continue t
+    yield t Ack     = logPeerRX "ACK" >> Timeout.reset t >> continue t
+    yield t _       = logPeerRX "FIN" >> Timeout.cancel t
 
 listenAgents :: MonadCatchIO m => Seconds -> Address -> Routes ThreadId -> m ()
 listenAgents n addr routes =
@@ -101,6 +104,6 @@ listenAgents n addr routes =
   where
     continue = receive . yield
 
-    yield t (E evt) = Timer.reset t >> notify evt routes >> continue t
-    yield t Ack     = logPeerRX "ACK" >> Timer.reset t >> continue t
-    yield t _       = logPeerRX "FIN" >> Timer.cancel t
+    yield t (E evt) = Timeout.reset t >> notify evt routes >> continue t
+    yield t Ack     = logPeerRX "ACK" >> Timeout.reset t >> continue t
+    yield t _       = logPeerRX "FIN" >> Timeout.cancel t

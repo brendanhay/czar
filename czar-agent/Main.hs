@@ -36,7 +36,7 @@ import           Data.String
 import qualified Data.Text                    as T
 import           Network.BSD                  hiding (hostName)
 
-defineOptions "Main" debugSwitch
+defineOptions "Main" debugOption
 
 defineOptions "Send" $ do
     addressOption "sendAgent" "agent" defaultAgent
@@ -66,6 +66,8 @@ defineOptions "Connect" $ do
 
     stringsOption "connTags" "tags" []
         "Comma separated list of tags to prepend to every event"
+
+    emissionOption
 
 main :: IO ()
 main = runSubcommand
@@ -101,13 +103,13 @@ main = runSubcommand
         forkChecks connSplay queue checks
 
         stats  <- newStats
-            (fromString connHost)
+            (fromString host)
             "czar.agent.internal"
             Nothing
             ["czar-agent"]
 
         raceAll
-            [ healthCheck connMetrics stats (atomically . writeTQueue queue)
+            [ healthCheck optEmission stats (atomically . writeTQueue queue)
             , connectServer connServer queue
             , listenAgents connListen queue
             ]

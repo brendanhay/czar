@@ -30,20 +30,21 @@ import           Control.Monad.IO.Class
 import qualified Czar.Internal.Protocol.Event        as E
 import qualified Czar.Internal.Protocol.Subscription as S
 import           Czar.Log
-import           Czar.Protocol                       (Event, Subscription)
+import           Czar.Protocol                       (Event, Subscription, Utf8)
 import qualified Czar.Protocol                       as P
 import           Data.ByteString.Lazy                (ByteString)
-import           Data.Foldable                       (toList)
+import           Data.Foldable
 import           Data.HashMap.Strict                 (HashMap)
 import qualified Data.HashMap.Strict                 as Queues
 import           Data.Hashable
 import           Data.IORef
 import           Data.MultiBiMap                     (MultiBiMap)
 import qualified Data.MultiBiMap                     as Index
+import           Prelude                             hiding (concatMap, mapM_, elem)
 
 type Key a = (Eq a, Hashable a, Show a)
 
-data Table a = Table !(MultiBiMap a ByteString) !(HashMap a (TQueue Event))
+data Table a = Table !(MultiBiMap a Utf8) !(HashMap a (TQueue Event))
 
 newtype Routes a = Routes (IORef (Table a))
 
@@ -57,10 +58,13 @@ subscribe sub key (Routes ref) = do
     return $! q
   where
     update q (Table idx qs) = Table
-        (Index.insert key (map P.utf8 . toList $ S.tags sub) idx)
+        (Index.insert key match idx)
         (Queues.insert key q qs)
 
--- FIXME: unsubscribe seems to be removing _all_?
+    match | "*" `elem` tags = ["*"]
+          | otherwise       = tags
+
+    tags = toList $ S.tags sub
 
 unsubscribe :: (MonadIO m, Key a) => a -> Routes a -> m ()
 unsubscribe key (Routes ref) = modifyIORef_ ref delete
@@ -73,15 +77,17 @@ notify :: (MonadIO m, Key a) => Event -> Routes a -> m ()
 notify evt (Routes ref) = do
     (Table idx qs) <- liftIO $ readIORef ref
 
-    let tags = "*" : (map P.utf8 . toList $ E.tags evt)
-        keys = concatMap (`Index.inverse` idx) tags
+    let tags = "*" : toList (E.tags evt)
+        keys = Index.inverse tags idx
 
     logDebug $ "sending to " ++ show keys
 
-    mapM_ (push . (`Queues.lookup` qs)) keys
+    mapM_ (push qs) keys
   where
-    push (Just q) = liftIO . atomically $ writeTQueue q evt
-    push Nothing  = return ()
+    push qs k = maybe
+       (return ())
+       (liftIO . atomically . flip writeTQueue evt)
+       (Queues.lookup k qs)
 
 --
 -- Internal
@@ -89,3 +95,4 @@ notify evt (Routes ref) = do
 
 modifyIORef_ :: MonadIO m => IORef a -> (a -> a) -> m ()
 modifyIORef_ ref f = liftIO $ atomicModifyIORef' ref $ \x -> (f x, ())
+

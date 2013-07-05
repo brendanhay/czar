@@ -16,6 +16,12 @@
 
 module Main (main) where
 
+import           Control.Concurrent                  hiding (yield)
+import           Control.Concurrent.STM
+import           Control.Monad
+import           Control.Monad.CatchIO               hiding (Handler)
+import           Control.Monad.IO.Class
+import           Czar.EKG
 import qualified Czar.Internal.Protocol.Event        as E
 import           Czar.Internal.Protocol.Subscription
 import           Czar.Log
@@ -34,20 +40,38 @@ defineOptions "Handler" $ do
     stringsOption "hdTags" "tags" ["*"]
         "Tags to subscribe to"
 
-    debugSwitch
+    emissionOption
+
+    debugOption
 
 main :: IO ()
 main = runCommand $ \Handler{..} _ -> do
     setLogging optDebug
+
     logInfo "starting graphite handler ..."
+
     connect hdServer $ do
         logPeerTX $ "sending subscription for " ++ show hdTags
-        send $ sub hdTags
-        continue
+        subscribe hdTags
+
+        queue  <- liftIO $ atomically newTQueue
+        stats  <- newStats
+            "localhost"
+            "czar.graphite.internal"
+            Nothing
+            ["czar-graphite"]
+
+        health <- liftIO . forkIO $ healthCheck optEmission stats
+            (atomically . writeTQueue queue)
+
+        sender <- forkContextFinally
+            (forever $ liftIO (atomically $ readTQueue queue) >>= send)
+            finish
+
+        continue `finally` liftIO (killThread health >> killThread sender)
   where
-    sub = Subscription
-        "graphite"
-        (Just "Graphite Handler")
+    subscribe = send
+        . Subscription "graphite" (Just "Graphite Handler")
         . Seq.fromList
         . map fromString
 

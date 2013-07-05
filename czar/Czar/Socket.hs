@@ -48,8 +48,8 @@ module Czar.Socket
     ) where
 
 import           Control.Concurrent
-import           Control.Concurrent.Timer       (Timer)
-import qualified Control.Concurrent.Timer       as Timer
+import           Control.Concurrent.Timeout       (Timeout)
+import qualified Control.Concurrent.Timeout       as Timeout
 import           Control.Monad.CatchIO
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
@@ -116,13 +116,13 @@ send msg = do
     sock <- socket
     liftIO . Sock.sendAll sock $ messagePut msg
 
-heartbeat :: MonadIO m => Seconds -> Context m Timer
+heartbeat :: MonadIO m => Seconds -> Context m Timeout
 heartbeat n = do
     sock <- socket
     peer <- peerName
     name <- sockName
 
-    Timer.start n
+    Timeout.start n
         (logTX name peer "SYN" >> send' sock Syn)
         (logRX peer name "TIMEOUT" >> send' sock Fin `finally` close sock)
   where
