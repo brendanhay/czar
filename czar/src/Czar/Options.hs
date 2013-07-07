@@ -24,13 +24,11 @@ module Czar.Options
     ) where
 
 import Control.Applicative
-import Control.Monad
 import Control.Monad.IO.Class
 import Czar.Log
 import Czar.Options.Internal  as Int
-import Data.Version
 import Language.Haskell.TH
-import Options                as Opts hiding (stringOption, stringsOption)
+import Options                as Opts hiding (stringOption, stringsOption, integerOption)
 
 defineOptions "Common" $ do
     boolOption "optDebug" "debug" False

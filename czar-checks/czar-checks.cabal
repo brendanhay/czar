@@ -1,0 +1,16 @@
+name:                  czar-checks
+version:               0.1.0
+synopsis:              Pending
+license:               OtherLicense
+license-file:          ../LICENSE
+author:                Brendan Hay
+maintainer:            Brendan Hay <brendan.g.hay@gmail.com>
+copyright:             Copyright (c) 2013 Brendan Hay
+stability:             Experimental
+category:              Monitoring
+build-type:            Simple
+cabal-version:         >= 1.10
+extra-source-files:    README.md
+
+description:
+    Pending

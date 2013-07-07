@@ -21,17 +21,14 @@ module Czar.Options.Internal
     , secondsOption
     , stringOption
     , stringsOption
-
-    -- * Formatting
-    , defaultText
+    , maybeStringOption
+    , maybeDoubleOption
     ) where
 
-import           Control.Monad
 import           Control.Monad.IO.Class
 import           Czar.Log
 import           Czar.Types
 import           Data.List              (intercalate)
-import           Data.Version
 import           Language.Haskell.TH
 import qualified Options                as O
 import           Options                hiding (stringOption, stringsOption)
@@ -53,10 +50,13 @@ stringsOption :: String -> String -> [String] -> String -> OptionsM ()
 stringsOption name flag def desc =
     O.stringsOption name flag def $ desc ++ defaultText (intercalate ", " def)
 
-defaultText :: String -> String
-defaultText s
-    | null s    = " (default: none)"
-    | otherwise = " (default: " ++ s ++ ")"
+maybeStringOption :: String -> String -> String -> OptionsM ()
+maybeStringOption name flag =
+    createOption (optionTypeMaybe optionTypeString) name flag Nothing
+
+maybeDoubleOption :: String -> String -> String -> OptionsM ()
+maybeDoubleOption name flag =
+    createOption (optionTypeMaybe optionTypeDouble) name flag Nothing
 
 --
 -- Internal
@@ -71,3 +71,8 @@ createOption type' name flag def desc =
         , optionDescription = desc ++ defaultText (show def)
         }
 
+defaultText :: String -> String
+defaultText s
+    | s == "Nothing" = " (default: none)"
+    | null s        = " (default: none)"
+    | otherwise     = " (default: " ++ s ++ ")"

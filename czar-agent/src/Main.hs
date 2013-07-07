@@ -35,6 +35,7 @@ import qualified Data.Sequence                as Seq
 import           Data.String
 import qualified Data.Text                    as T
 import           Network.BSD                  hiding (hostName)
+import           System.Exit
 
 commonOptions "Main" $ return ()
 
@@ -42,8 +43,36 @@ defineOptions "Send" $ do
     addressOption "sendAgent" "agent" defaultAgent
         "Czar Agent address to connect to"
 
+    stringsOption "sendType" "type" []
+        "Type of the metric to send"
+
+    stringsOption "sendKey" "key" []
+        ""
+
+    stringsOption "sendValue" "value" []
+        ""
+
+    doubleOption "sendWarnLower" "warning-lower" 0
+        "Lower bound for warnings"
+
+    doubleOption "sendWarnUpper" "warning-upper" 100
+        "Upper bound for warnings"
+
+    doubleOption "sendCritLower" "critical-lower" 0
+        "Lower bound for criticals"
+
+    doubleOption "sendCritUpper" "critical-upper" 1000
+        "Upper bound for criticals"
+
+    stringsOption "sendDesc" "description" []
+        "Decsription of the event"
+
     stringsOption "sendTags" "tags" []
         "Comma separated list to tags to annotate the event"
+
+validate :: Send -> IO ()
+validate Send{..} = do
+    exitFailure
 
 defineOptions "Connect" $ do
     addressOption "connListen" "listen" defaultAgent
@@ -52,8 +81,8 @@ defineOptions "Connect" $ do
     addressOption "connServer" "server" defaultServer
         "Czar Server address to connect to"
 
-    stringOption "connHost" "host" ""
-        "Hostname used to identify the machine (auto-determined if blank)"
+    maybeStringOption "connHost" "host"
+        "Hostname used to identify the machine"
 
     secondsOption "connMetrics" "metrics-interval" 30
         "Interval between internal metric emissions"
@@ -86,9 +115,7 @@ main = runSubcommand
         logInfo "Done."
 
     connect' Connect{..} = do
-        host <- if null connHost
-                then liftIO getHostName
-                else return connHost
+        host <- maybe (liftIO getHostName) return connHost
 
         logInfo $ "identifying host as " ++ host
         logInfo "starting agent ..."
