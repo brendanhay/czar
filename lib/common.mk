@@ -27,7 +27,7 @@ clean:
 	cabal-dev configure $(SANDBOX) && touch .conf
 
 ../bin/$(APP): ../bin
-	@if [ -e $(BIN) ]; then ln -fs $(APP)/$(BIN) $@; fi
+	@if [ -e $(BIN) ]; then ln -fs ../$(APP)/$(BIN) $@; fi
 
 ../bin:
 	-mkdir -p ../bin
