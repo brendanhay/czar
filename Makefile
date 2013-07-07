@@ -10,6 +10,3 @@ make = cd $(1) && $(MAKE) $@
 	$(call make,czar-pagerduty)
 	$(call make,czar-checks)
 
-bin/%:
-	@mkdir -p bin && ln -fs ../dist/build/$*/$* $@
-
