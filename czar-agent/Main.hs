@@ -72,12 +72,10 @@ defineOptions "Connect" $ do
 
 main :: IO ()
 main = runSubcommand
-    [ subcommand "send" (run send')
-    , subcommand "connect" (run connect')
+    [ command "send" send' :: Subcommand Main (IO ())
+    , command "connect" connect' :: Subcommand Main (IO ())
     ]
   where
-    run f Main{..} opts _ = f opts
-
     send' Send{..} = do
         logInfo "connecting to agent ..."
 

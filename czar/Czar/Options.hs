@@ -16,6 +16,7 @@ module Czar.Options
     -- * Option Declarations
     ( commonOptions
     , runProgram
+    , command
 
     -- * Re-exported Modules
     , module Int
@@ -52,10 +53,23 @@ commonOptions name rest = (decl :) <$> opts
         options "optCommon" (importedOptions :: ImportedOptions Common) >> rest
 
 runProgram :: (MonadIO m, Options a, CommonOptions a) => (a -> m b) -> m b
-runProgram action = runCommand $ \opts _ -> do
+runProgram action = runCommand $ \opts _ -> runCommon opts >> action opts
+
+command :: (MonadIO m, Options a, Options b, CommonOptions a)
+           => String
+           -> (b -> m c)
+           -> Subcommand a (m c)
+command name action = subcommand name $ \a b _ -> runCommon a >> action b
+
+--
+-- Internal
+--
+
+runCommon :: (MonadIO m, Options a, CommonOptions a) => a -> m ()
+runCommon opts = do
     let Common{..} = getCommon opts
 
     when optVersion . liftIO $ do
         putStrLn $ showVersion version
 
-    setLogging optDebug >> action opts
+    setLogging optDebug
