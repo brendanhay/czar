@@ -9,7 +9,7 @@ vendor/%:
 	 --disable-documentation \
 	 --disable-library-coverage
 
-src/Czar/Internal/Protocol: lib/czar.proto
-	hprotoc -I lib -p Czar.Internal -d src -v $<
+src/Czar/Internal/Protocol: ../lib/czar.proto
+	hprotoc -I ../lib -p Czar.Internal -d src -v $<
 
 include ../lib/common.mk
