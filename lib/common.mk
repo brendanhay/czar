@@ -1,12 +1,16 @@
 DEPS ?=
+
 SANDBOX := -s ../cabal-dev
+
+APP := $(lastword $(subst /, ,$(CURDIR)))
+BIN := dist/build/$(APP)/$(APP)
 
 default: all
 
 all: build
 
 build: .conf $(DEPS)
-	cabal-dev build $(SANDBOX)
+	cabal-dev build $(SANDBOX); $(MAKE) ../bin/$(APP)
 
 install:
 	cabal-dev install $(SANDBOX) -j \
@@ -21,3 +25,9 @@ clean:
 
 .conf:
 	cabal-dev configure $(SANDBOX) && touch .conf
+
+../bin/$(APP): ../bin
+	@if [ -e $(BIN) ]; then ln -fs $(BIN) $@; fi
+
+../bin:
+	-mkdir -p ../bin
