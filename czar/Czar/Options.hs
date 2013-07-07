@@ -31,14 +31,10 @@ import Czar.Options.Internal  as Int
 import Data.Version
 import Language.Haskell.TH
 import Options                as Opts hiding (stringOption, stringsOption)
-import Paths_czar             (version)
 
 defineOptions "Common" $ do
     boolOption "optDebug" "debug" False
         "Log debug output"
-
-    boolOption "optVersion" "version" False
-        "Show version information"
 
 class CommonOptions a where
     getCommon :: a -> Common
@@ -68,8 +64,4 @@ command name action = subcommand name $ \a b _ -> runCommon a >> action b
 runCommon :: (MonadIO m, Options a, CommonOptions a) => a -> m ()
 runCommon opts = do
     let Common{..} = getCommon opts
-
-    when optVersion . liftIO $ do
-        putStrLn $ showVersion version
-
     setLogging optDebug
