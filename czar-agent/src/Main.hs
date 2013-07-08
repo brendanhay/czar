@@ -43,13 +43,13 @@ defineOptions "Send" $ do
     addressOption "sendAgent" "agent" defaultAgent
         "Czar Agent address to connect to"
 
-    stringsOption "sendType" "type" []
+    stringOption "sendType" "type" ""
         "Type of the metric to send"
 
-    stringsOption "sendKey" "key" []
+    stringOption "sendKey" "key" "oneshot.event"
         ""
 
-    stringsOption "sendValue" "value" []
+    stringOption "sendValue" "value" ""
         ""
 
     doubleOption "sendWarnLower" "warning-lower" 0
@@ -123,6 +123,9 @@ main = runSubcommand
         logInfoM ("loading checks from " ++) connChecks
 
         checks <- loadChecks connChecks
+
+        liftIO $ print checks
+
         queue  <- atomically newTQueue
 
         logInfoM (("adding " ++) . T.unpack . chkName) checks

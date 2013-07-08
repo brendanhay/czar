@@ -118,8 +118,8 @@ newMetric time key metric = do
         , M.type'    = Just typ
         , M.key      = key
         , M.value    = toDouble val
-        , M.warning  = Nothing
-        , M.critical = Nothing
+        , M.warning  = T.Threshold Nothing Nothing
+        , M.critical = T.Threshold Nothing Nothing
         }
   where
     toDouble (I i) = fromIntegral i

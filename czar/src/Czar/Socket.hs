@@ -36,6 +36,8 @@ module Czar.Socket
     , send
     , heartbeat
     , finish
+    , peerName
+    , sockName
 
     -- * Fork Contexts
     , forkContext
@@ -179,6 +181,12 @@ logAddr prio addr = logM prio . (peer ++)
         "" -> ""
         s  -> printf "%s " s
 
+peerName :: MonadIO m => Context m SockAddr
+peerName = socket >>= liftIO . getPeerName
+
+sockName :: MonadIO m => Context m SockAddr
+sockName = socket >>= liftIO . getSocketName
+
 --
 -- Internal
 --
@@ -187,12 +195,6 @@ close :: MonadCatchIO m => Socket -> m ()
 close sock = liftIO $ do
     p <- Sock.isConnected sock
     when p $ Sock.close sock
-
-peerName :: MonadIO m => Context m SockAddr
-peerName = socket >>= liftIO . getPeerName
-
-sockName :: MonadIO m => Context m SockAddr
-sockName = socket >>= liftIO . getSocketName
 
 releaseAddr :: MonadIO m => SockAddr -> m ()
 releaseAddr (SockAddrUnix path) = liftIO $ do

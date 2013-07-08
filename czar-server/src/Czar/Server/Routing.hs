@@ -32,6 +32,7 @@ import qualified Czar.Internal.Protocol.Subscription as S
 import           Czar.Log
 import           Czar.Protocol                       (Event, Subscription, Utf8)
 import qualified Czar.Protocol                       as P
+import           Czar.Threshold
 import           Data.ByteString.Lazy                (ByteString)
 import           Data.Foldable
 import           Data.HashMap.Strict                 (HashMap)
@@ -74,17 +75,18 @@ unsubscribe key (Routes ref) = modifyIORef_ ref delete
         (Queues.delete key qs)
 
 notify :: (MonadIO m, Key a) => Event -> Routes a -> m ()
-notify evt (Routes ref) = do
+notify e (Routes ref) = do
     (Table idx qs) <- liftIO $ readIORef ref
 
-    let tags = "*" : toList (E.tags evt)
+    let evt  = annotate e
+        tags = "*" : toList (E.tags evt)
         keys = Index.inverse tags idx
 
-    logDebug $ "sending to " ++ show keys
+    logDebug $ "sending tags " ++ show tags ++ " to " ++ show keys
 
-    mapM_ (push qs) keys
+    mapM_ (push qs evt) keys
   where
-    push qs k = maybe
+    push qs evt k = maybe
        (return ())
        (liftIO . atomically . flip writeTQueue evt)
        (Queues.lookup k qs)

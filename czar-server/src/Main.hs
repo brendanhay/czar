@@ -15,6 +15,7 @@
 
 module Main (main) where
 
+import           Control.Applicative
 import           Control.Concurrent                  hiding (yield)
 import           Control.Concurrent.Race
 import           Control.Concurrent.STM
@@ -31,6 +32,7 @@ import           Czar.Server.Routing
 import           Czar.Socket
 import           Czar.Types
 import           Data.Foldable                       (toList)
+import           Network.Socket                      (SockAddr)
 
 commonOptions "Server" $ do
     addressOption "optAgents" "agents" defaultServer
@@ -62,15 +64,11 @@ main = runProgram $ \Server{..} -> do
         , listenAgents optTimeout optAgents routes
         ]
 
--- FIXME: Error or wipe old subscription if a handler sends it twice
-
--- should:
---  the server determine + annotate events based on thresholds -> less subscription traffic, less concurrency, more cpu
---  handlers subscribe to all and do whatever -> more traffic, less server cpu
-
--- answer: keep server simple, handlers can just use wildcard
-
-listenHandlers :: MonadCatchIO m => Seconds -> Address -> Routes ThreadId -> m ()
+listenHandlers :: MonadCatchIO m
+               => Seconds
+               -> Address
+               -> Routes (ThreadId, SockAddr)
+               -> m ()
 listenHandlers n addr routes =
     listen addr $ logPeerRX "accepting handler" >> receive handshake
   where
@@ -81,15 +79,17 @@ listenHandlers n addr routes =
             ++ show (toList tags)
 
         parent <- liftIO myThreadId
-        queue  <- liftIO $ subscribe sub parent routes
-        timer  <- heartbeat n
+        peer   <- peerName
 
-        child  <- forkContextFinally
-            (forever $ do
-                evt <- liftIO . atomically $ readTQueue queue
-                send evt)
-            (do logInfo $ "unsubscribing " ++ show parent
-                unsubscribe parent routes)
+        let name = (parent, peer)
+
+        queue <- liftIO $ subscribe sub name routes
+        timer <- heartbeat n
+
+        child <- forkContextFinally
+            (forever $ liftIO (atomically $ readTQueue queue) >>= send)
+            (do logInfo $ "unsubscribing " ++ show name
+                unsubscribe name routes)
 
         continue timer `finally` liftIO (killThread child)
     handshake _ = logPeerRX "FIN"
@@ -100,7 +100,11 @@ listenHandlers n addr routes =
     yield t Ack     = logPeerRX "ACK" >> Timeout.reset t >> continue t
     yield t _       = logPeerRX "FIN" >> Timeout.cancel t
 
-listenAgents :: MonadCatchIO m => Seconds -> Address -> Routes ThreadId -> m ()
+listenAgents :: MonadCatchIO m
+             => Seconds
+             -> Address
+             -> Routes (ThreadId, SockAddr)
+             -> m ()
 listenAgents n addr routes =
     listen addr $ logPeerRX "accepting agent" >> heartbeat n >>= continue
   where

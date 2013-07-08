@@ -74,6 +74,6 @@ main = runProgram $ \Handler{..} -> do
 
     continue = receive yield
 
-    yield (E evt) = logPeerRX (show $ E.key evt) >> continue
+    yield (E evt) = logPeerRX (show $ E.tags evt) >> continue
     yield Syn     = logPeerRX "SYN" >> send Ack >> logPeerTX "ACK" >> continue
     yield _       = logPeerRX "FIN"

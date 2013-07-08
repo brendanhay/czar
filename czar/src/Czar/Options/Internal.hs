@@ -19,19 +19,19 @@ module Czar.Options.Internal
     -- * Option Constructors
     ( addressOption
     , secondsOption
+    , thresholdOption
     , stringOption
     , stringsOption
     , maybeStringOption
     , maybeDoubleOption
     ) where
 
-import           Control.Monad.IO.Class
-import           Czar.Log
+import           Czar.Internal.Protocol.Threshold
 import           Czar.Types
-import           Data.List              (intercalate)
+import           Data.List                        (intercalate)
 import           Language.Haskell.TH
-import qualified Options                as O
-import           Options                hiding (stringOption, stringsOption)
+import qualified Options                          as O
+import           Options                          hiding (stringOption, stringsOption)
 import           Options.OptionTypes
 
 addressOption :: String -> String -> Address -> String -> OptionsM ()
@@ -42,6 +42,18 @@ secondsOption :: String -> String -> Seconds -> String -> OptionsM ()
 secondsOption = createOption
     (OptionType (ConT ''Seconds) False parseSeconds [| parseSeconds |])
 
+thresholdOption :: String -> String -> Threshold -> String -> OptionsM ()
+thresholdOption name flag (Threshold l u) desc =
+    option name $ \o -> o
+        { optionLongFlags   = [flag]
+        , optionDefault     = def
+        , optionType        = type'
+        , optionDescription = desc ++ defaultText def
+        }
+  where
+    type' = OptionType (ConT ''Threshold) False parseThreshold [| parseThreshold |]
+    def   = maybe "" show l ++ ":" ++ maybe "" show u
+
 stringOption :: String -> String -> String -> String -> OptionsM ()
 stringOption name flag def desc =
     O.stringOption name flag def $ desc ++ defaultText def
@@ -51,12 +63,20 @@ stringsOption name flag def desc =
     O.stringsOption name flag def $ desc ++ defaultText (intercalate ", " def)
 
 maybeStringOption :: String -> String -> String -> OptionsM ()
-maybeStringOption name flag =
-    createOption (optionTypeMaybe optionTypeString) name flag Nothing
+maybeStringOption name flag desc =
+    option name $ \o -> o
+        { optionLongFlags   = [flag]
+        , optionType        = optionTypeMaybe optionTypeString
+        , optionDescription = desc ++ defaultText ""
+        }
 
 maybeDoubleOption :: String -> String -> String -> OptionsM ()
-maybeDoubleOption name flag =
-    createOption (optionTypeMaybe optionTypeDouble) name flag Nothing
+maybeDoubleOption name flag desc =
+    option name $ \o -> o
+        { optionLongFlags   = [flag]
+        , optionType        = optionTypeMaybe optionTypeDouble
+        , optionDescription = desc ++ defaultText ""
+        }
 
 --
 -- Internal
@@ -73,6 +93,5 @@ createOption type' name flag def desc =
 
 defaultText :: String -> String
 defaultText s
-    | s == "Nothing" = " (default: none)"
-    | null s        = " (default: none)"
-    | otherwise     = " (default: " ++ s ++ ")"
+    | null s    = " (default: none)"
+    | otherwise = " (default: " ++ s ++ ")"

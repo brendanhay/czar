@@ -19,18 +19,24 @@ module Czar.Types
 
     , Address(..)
     , parseAddress
+
+    , parseThreshold
     ) where
 
 import           Control.Applicative
 import           Control.Error
+import           Czar.Internal.Protocol.Threshold
 import           Data.Configurator.Types
+import           Data.Hashable
 import           Data.String
 import           Network.Socket
 import           Options.OptionTypes
 import           System.FilePath
-import           System.IO.Unsafe              (unsafePerformIO)
-import qualified Text.ParserCombinators.Parsec as P
-import           Text.ParserCombinators.Parsec hiding ((<|>), try)
+import           System.IO.Unsafe                    (unsafePerformIO)
+import           Text.Parsec.Language                (emptyDef)
+import qualified Text.ParserCombinators.Parsec       as P
+import           Text.ParserCombinators.Parsec       hiding ((<|>), try)
+import qualified Text.ParserCombinators.Parsec.Token as P
 
 newtype Seconds = Seconds Int deriving (Eq, Ord, Num)
 
@@ -64,13 +70,28 @@ instance IsString Address where
     fromString = read
 
 parseAddress :: String -> Either String Address
-parseAddress str = f `fmapL` parse addrWrapper "" str
+parseAddress = parseE addrWrapper
+
+instance Hashable SockAddr where
+    hashWithSalt salt = hashWithSalt salt . show
+
+parseThreshold :: String -> Either String Threshold
+parseThreshold = parseE parser
   where
-    f = (str ++) . (" " ++) . show
+    parser = do
+        l <- optionMaybe double
+        char ':'
+        u <- optionMaybe double
+        return $! Threshold l u
 
 --
 -- Internal
 --
+
+-- parseE :: GenParser Char s a -> String -> Either String a
+parseE p str = f `fmapL` parse p "" str
+  where
+    f = (str ++) . (" " ++) . show
 
 addrWrapper :: GenParser Char s Address
 addrWrapper = do
@@ -100,3 +121,6 @@ addrPort = f <$> (char ':' *> (read <$> many1 digit) <* eof)
 
 addrPath :: GenParser Char s String
 addrPath = many1 $ noneOf "!@#$%^&*()=\\/|\"',?:"
+
+double :: GenParser Char s Double
+double = P.float $ P.makeTokenParser emptyDef

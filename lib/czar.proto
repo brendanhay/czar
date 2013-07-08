@@ -10,8 +10,8 @@ message Metric {
   optional string type = 2;
   required string key = 3;
   required double value = 4;
-  optional Threshold warning = 5;
-  optional Threshold critical = 6;
+  required Threshold warning = 5;
+  required Threshold critical = 6;
 }
 
 message Attribute {

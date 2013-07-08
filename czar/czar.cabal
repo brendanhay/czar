@@ -36,6 +36,7 @@ library
       , Czar.Options.Internal
       , Czar.Protocol
       , Czar.Socket
+      , Czar.Threshold
       , Czar.Types
       , Data.MultiBiMap
       , Paths_czar

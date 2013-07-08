@@ -60,9 +60,15 @@ forkChecks splay queue cs = liftIO $ zipWithM fork cs steps >>= mapM_ link
     fork Check{..} n = async $ do
         threadDelay n
         forever $ do
-            threadDelay $ toInt chkInterval
+            let delay = toInt chkInterval
+                name  = enc chkName
+                evt   = E.Event 0 name name
+                            (enc <$> chkDesc)
+                            (Seq.fromList $ map enc chkTags)
+                            (Seq.fromList [])
+                            (Seq.fromList [])
 
-            let evt = E.Event 0 (enc chkName) "key" (enc <$> chkDesc) (Seq.fromList []) (Seq.fromList []) (Seq.fromList [])
+            threadDelay delay
 
             atomically $ writeTQueue queue evt
 

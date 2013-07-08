@@ -1,8 +1,8 @@
-name:                  czar-server
+name:                  system-info
 version:               0.1.0
 synopsis:              Pending
 license:               OtherLicense
-license-file:          ../LICENSE
+license-file:          LICENSE
 author:                Brendan Hay
 maintainer:            Brendan Hay <brendan.g.hay@gmail.com>
 copyright:             Copyright (c) 2013 Brendan Hay
@@ -15,26 +15,28 @@ extra-source-files:    README.md
 description:
     Pending
 
-executable czar-server
+library
     default-language:  Haskell2010
-    main-is:           Main.hs
     hs-source-dirs:    src
 
+    exposed-modules:
+        System.Info.Disk
+      , System.Info.Health
+
+    other-modules:
+        System.Info.Disk.OSX
+      , System.Info.Health.OSX
+      , System.Info.Types
+
     ghc-options:
-        -threaded
         -Wall
         -fwarn-tabs
         -funbox-strict-fields
-        -with-rtsopts=-N
-        -with-rtsopts=-T
 
     build-depends:
-        base                      >= 4 && < 5
-      , bytestring
-      , czar
-      , hashable
-      , MonadCatchIO-transformers
-      , network
-      , stm
+        base          >= 4 && < 5
+      , containers
+      , errors
+      , parsec
+      , shqq
       , transformers
-      , unordered-containers

@@ -10,7 +10,7 @@ default: all
 all: build
 
 build: .conf $(DEPS)
-	cabal-dev build $(SANDBOX); $(MAKE) ../bin/$(APP)
+	cabal-dev build $(SANDBOX) && $(MAKE) ../bin/$(APP)
 
 install:
 	cabal-dev install $(SANDBOX) -j \
