@@ -1,4 +1,6 @@
 ./vendor/ekg
 ./vendor/options
+./vendor/pool
+./vendor/bouquet
 ./system-info
 .

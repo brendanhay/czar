@@ -1,5 +1,7 @@
 DEPS := vendor/ekg \
  vendor/options \
+ vendor/pool \
+ vendor/bouquet \
  czar/src/Czar/Internal/Protocol.hs
 
 BINS := bin/server \
@@ -26,6 +28,9 @@ lint:
 
 .conf:
 	cabal-dev configure && touch .conf
+
+vendor/pool:
+	git clone git@github.com:bos/pool.git $@
 
 vendor/%:
 	git clone git@github.com:brendanhay/$*.git $@
