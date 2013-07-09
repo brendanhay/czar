@@ -1,0 +1,189 @@
+name:                  czar
+version:               0.1.0
+synopsis:              Pending
+license:               OtherLicense
+license-file:          LICENSE
+author:                Brendan Hay
+maintainer:            Brendan Hay <brendan.g.hay@gmail.com>
+copyright:             Copyright (c) 2013 Brendan Hay
+stability:             Experimental
+category:              Monitoring
+build-type:            Simple
+cabal-version:         >= 1.10
+extra-source-files:    README.md
+
+description:
+    Pending
+
+library
+    default-language:  Haskell2010
+    hs-source-dirs:    czar
+
+    exposed-modules:
+        Control.Concurrent.Race
+      , Control.Concurrent.Timeout
+      , Czar.EKG
+      , Czar.Internal.Protocol
+      , Czar.Internal.Protocol.Attribute
+      , Czar.Internal.Protocol.Event
+      , Czar.Internal.Protocol.Metric
+      , Czar.Internal.Protocol.Heartbeat
+      , Czar.Internal.Protocol.Heartbeat.Mode
+      , Czar.Internal.Protocol.Subscription
+      , Czar.Internal.Protocol.Threshold
+      , Czar.Log
+      , Czar.Options
+      , Czar.Options.Internal
+      , Czar.Protocol
+      , Czar.Socket
+      , Czar.Threshold
+      , Czar.Types
+      , Data.MultiBiMap
+      , Paths_czar
+
+    ghc-options:
+        -Wall
+        -fwarn-tabs
+        -funbox-strict-fields
+
+    build-depends:
+        async
+      , base                      >= 4 && < 5
+      , bytestring
+      , configurator
+      , containers
+      , directory
+      , ekg
+      , errors
+      , filepath
+      , hashable
+      , hslogger
+      , MonadCatchIO-transformers
+      , mtl
+      , network
+      , old-locale
+      , options
+      , parsec
+      , protocol-buffers
+      , protocol-buffers-descriptor
+      , stm
+      , template-haskell
+      , text
+      , time
+      , transformers
+      , unix
+      , unordered-containers
+
+executable czar-server
+    default-language:  Haskell2010
+    main-is:           Main.hs
+    hs-source-dirs:    czar-server
+
+    ghc-options:
+        -threaded
+        -Wall
+        -fwarn-tabs
+        -funbox-strict-fields
+        -with-rtsopts=-N
+        -with-rtsopts=-T
+
+    build-depends:
+        base                      >= 4 && < 5
+      , bytestring
+      , czar
+      , hashable
+      , MonadCatchIO-transformers
+      , network
+      , stm
+      , transformers
+      , unordered-containers
+
+executable czar-agent
+    default-language:  Haskell2010
+    main-is:           Main.hs
+    hs-source-dirs:    czar-agent
+
+    ghc-options:
+        -threaded
+        -Wall
+        -fwarn-tabs
+        -funbox-strict-fields
+        -with-rtsopts=-T
+
+    build-depends:
+        async
+      , base                      >= 4 && < 5
+      , configurator
+      , containers
+      , czar
+      , directory
+      , filepath
+      , MonadCatchIO-transformers
+      , network
+      , stm
+      , text
+      , transformers
+      , unordered-containers
+
+executable czar-health
+    default-language:  Haskell2010
+    main-is:           Health.hs
+    hs-source-dirs:    czar-checks
+
+    ghc-options:
+        -threaded
+        -Wall
+        -fwarn-tabs
+        -funbox-strict-fields
+        -with-rtsopts=-T
+
+    build-depends:
+        base              >= 4 && < 5
+      , base64-bytestring
+      , bytestring
+      , czar
+      , errors
+      , network
+      , system-info
+      , time
+      , transformers
+
+executable czar-graphite
+    default-language:  Haskell2010
+    main-is:           Main.hs
+    hs-source-dirs:    czar-graphite
+
+    ghc-options:
+        -threaded
+        -Wall
+        -fwarn-tabs
+        -funbox-strict-fields
+        -with-rtsopts=-T
+
+    build-depends:
+        base                      >= 4 && < 5
+      , containers
+      , czar
+      , MonadCatchIO-transformers
+      , stm
+      , transformers
+
+executable czar-pagerduty
+    default-language:  Haskell2010
+    main-is:           Main.hs
+    hs-source-dirs:    czar-pagerduty
+
+    ghc-options:
+        -threaded
+        -Wall
+        -fwarn-tabs
+        -funbox-strict-fields
+        -with-rtsopts=-T
+
+    build-depends:
+        base                      >= 4 && < 5
+      , containers
+      , czar
+      , MonadCatchIO-transformers
+      , stm
+      , transformers

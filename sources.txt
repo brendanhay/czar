@@ -1,10 +1,4 @@
 ./vendor/ekg
 ./vendor/options
 ./system-info
-./czar
-./czar-server
-./czar-agent
-./czar-graphite
-./czar-pagerduty
-./czar-checks
-
+.
