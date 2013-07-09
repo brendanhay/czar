@@ -2,9 +2,15 @@ DEPS := vendor/ekg \
  vendor/options \
  czar/src/Czar/Internal/Protocol.hs
 
-default: build
+BINS := bin/server \
+ bin/agent \
+ bin/graphite \
+ bin/pagerduty \
+ bin/health
 
-build: .conf
+all: build
+
+build: .conf $(BINS)
 	cabal-dev build
 
 install: $(DEPS)
@@ -13,7 +19,7 @@ install: $(DEPS)
 	 --disable-library-coverage
 
 clean:
-	-rm -rf .conf dist vendor .shelly
+	-rm -rf .conf bin dist vendor .shelly
 
 lint:
 	hlint czar-* system-info/src
@@ -26,3 +32,9 @@ vendor/%:
 
 czar/src/Czar/Internal/Protocol.hs: lib/czar.proto
 	hprotoc -I lib -p Czar.Internal -d czar/src -v $<
+
+bin/%: bin
+	@ln -fs ../dist/build/czar-$*/czar-$* $@
+
+bin:
+	mkdir -p bin
