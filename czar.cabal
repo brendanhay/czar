@@ -22,7 +22,17 @@ library
     exposed-modules:
         Control.Concurrent.Race
       , Control.Concurrent.Timeout
+      , Data.MultiBiMap
+
       , Czar.EKG
+      , Czar.Log
+      , Czar.Options
+      , Czar.Options.Internal
+      , Czar.Protocol
+      , Czar.Socket
+      , Czar.Threshold
+      , Czar.Types
+
       , Czar.Internal.Protocol
       , Czar.Internal.Protocol.Attribute
       , Czar.Internal.Protocol.Event
@@ -31,15 +41,9 @@ library
       , Czar.Internal.Protocol.Heartbeat.Mode
       , Czar.Internal.Protocol.Subscription
       , Czar.Internal.Protocol.Threshold
-      , Czar.Log
-      , Czar.Options
-      , Czar.Options.Internal
-      , Czar.Protocol
-      , Czar.Socket
-      , Czar.Threshold
-      , Czar.Types
-      , Data.MultiBiMap
-      , Paths_czar
+
+    other-modules:
+        Paths_czar
 
     ghc-options:
         -Wall
@@ -111,19 +115,13 @@ executable czar-agent
         -with-rtsopts=-T
 
     build-depends:
-        async
-      , base                      >= 4 && < 5
-      , configurator
+        base                      >= 4 && < 5
       , containers
       , czar
-      , directory
-      , filepath
       , MonadCatchIO-transformers
       , network
       , stm
-      , text
       , transformers
-      , unordered-containers
 
 executable czar-health
     default-language:  Haskell2010
@@ -139,8 +137,6 @@ executable czar-health
 
     build-depends:
         base              >= 4 && < 5
-      , base64-bytestring
-      , bytestring
       , czar
       , errors
       , network

@@ -23,7 +23,6 @@ import           Control.Concurrent.STM
 import           Control.Monad
 import           Control.Monad.CatchIO
 import           Control.Monad.IO.Class
-import           Czar.Agent.Check
 import           Czar.EKG
 import qualified Czar.Internal.Protocol.Event as E
 import           Czar.Log
@@ -33,9 +32,7 @@ import           Czar.Socket
 import           Czar.Types
 import qualified Data.Sequence                as Seq
 import           Data.String
-import qualified Data.Text                    as T
 import           Network.BSD                  hiding (hostName)
-import           System.Exit
 
 commonOptions "Main" $ return ()
 
@@ -70,10 +67,6 @@ defineOptions "Send" $ do
     stringsOption "sendTags" "tags" []
         "Comma separated list to tags to annotate the event"
 
-validate :: Send -> IO ()
-validate Send{..} = do
-    exitFailure
-
 defineOptions "Connect" $ do
     addressOption "connListen" "listen" defaultAgent
         "Listen address for Czar Agent connections"
@@ -86,9 +79,6 @@ defineOptions "Connect" $ do
 
     secondsOption "connMetrics" "metrics-interval" 30
         "Interval between internal metric emissions"
-
-    stringsOption "connChecks" "checks" ["etc/czar/checks.list.d"]
-        "Comma separated list of files or directories containing check config"
 
     secondsOption "connSplay" "splay" 1
         "Stagger check start times by this number of seconds"
@@ -115,23 +105,13 @@ main = runSubcommand
         logInfo "Done."
 
     connect' Connect{..} = do
-        host <- maybe (liftIO getHostName) return connHost
+        host  <- maybe (liftIO getHostName) return connHost
 
         logInfo $ "identifying host as " ++ host
         logInfo "starting agent ..."
 
-        logInfoM ("loading checks from " ++) connChecks
-
-        checks <- loadChecks connChecks
-
-        liftIO $ print checks
-
-        queue  <- atomically newTQueue
-
-        logInfoM (("adding " ++) . T.unpack . chkName) checks
-        forkChecks connSplay queue checks
-
-        stats  <- newStats
+        queue <- atomically newTQueue
+        stats <- newStats
             (fromString host)
             "czar.agent"
             Nothing

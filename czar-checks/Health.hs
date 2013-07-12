@@ -18,16 +18,12 @@ module Main (main) where
 import           Control.Applicative
 import           Control.Error
 import           Control.Monad.IO.Class
-import qualified Czar.Internal.Protocol.Event     as E
 import qualified Czar.Internal.Protocol.Metric    as M
 import           Czar.Internal.Protocol.Threshold
 import           Czar.Options
 import           Czar.Protocol
-import qualified Data.ByteString.Base64.Lazy      as LB64
-import qualified Data.ByteString.Lazy             as LB
 import           Data.Time.Clock.POSIX
 import           Network.BSD
-import           System.IO
 import           System.Info.Health
 
 commonOptions "Check" $ do
@@ -76,5 +72,4 @@ main = runProgram $ \Check{..} -> do
                   , M.Metric time Nothing "memory" healthMemory warnMem critMem
                   ]
 
-    LB.hPut stdout . LB64.encode $ messagePut evt
-    putStrLn ""
+    print evt
