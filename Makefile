@@ -36,7 +36,7 @@ vendor/%:
 	git clone git@github.com:brendanhay/$*.git $@
 
 czar/src/Czar/Internal/Protocol.hs: lib/czar.proto
-	hprotoc -I lib -p Czar.Internal -d czar/src -v $<
+	hprotoc -I lib -p Czar.Internal -d czar -v $<
 
 bin/%: bin
 	@ln -fs ../dist/build/czar-$*/czar-$* $@
