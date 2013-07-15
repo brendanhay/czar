@@ -94,8 +94,8 @@ connectServer addr tags queue = connect addr $ do
         liftIO . atomically $ writeTQueue queue evt
         continue
 
-    yield Syn     = logPeerRX "SYN" >> send Ack >> logPeerTX "ACK" >> continue
-    yield _       = logPeerRX "FIN"
+    yield Syn = logPeerRX "SYN" >> send Ack >> logPeerTX "ACK" >> continue
+    yield _   = logPeerRX "FIN"
 
 connectGraphite :: MonadCatchIO m
                 => Address
