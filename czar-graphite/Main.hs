@@ -17,18 +17,27 @@
 module Main (main) where
 
 import           Control.Concurrent                  hiding (yield)
+import           Control.Concurrent.Race
 import           Control.Concurrent.STM
-import           Control.Monad
+import           Control.Monad                       (forever)
 import           Control.Monad.CatchIO               hiding (Handler)
 import           Control.Monad.IO.Class
 import           Czar.EKG
 import qualified Czar.Internal.Protocol.Event        as E
+import qualified Czar.Internal.Protocol.Metric       as M
 import           Czar.Internal.Protocol.Subscription
 import           Czar.Log
 import           Czar.Options
 import           Czar.Protocol
 import           Czar.Socket
+import           Czar.Types
+import qualified Data.ByteString.Char8               as BS
+import           Data.Foldable
+import           Data.Monoid
 import qualified Data.Sequence                       as Seq
+import           Network.Bouquet
+import           Prelude                             hiding (mapM_)
+import           Text.Printf
 
 commonOptions "Handler" $ do
     addressOption "hdServer" "server" defaultHandler
@@ -47,33 +56,61 @@ main :: IO ()
 main = runProgram $ \Handler{..} -> do
     logInfo "starting graphite handler ..."
 
-    connect hdServer $ do
-        logPeerTX $ "sending subscription for " ++ show hdTags
-        subscribe hdTags
+    queue <- atomically newTQueue
+    stats <- newStats
+        "localhost"
+        "czar.graphite"
+        Nothing
+        ["czar-graphite"]
 
-        queue  <- liftIO $ atomically newTQueue
-        stats  <- newStats
-            "localhost"
-            "czar.graphite"
-            Nothing
-            ["czar-graphite"]
+    raceAll
+        [ healthCheck optEmission stats (atomically . writeTQueue queue)
+        , connectServer hdServer hdTags queue
+        , connectGraphite hdGraphite queue
+        ]
 
-        health <- liftIO . forkIO $ healthCheck optEmission stats
-            (atomically . writeTQueue queue)
+connectServer :: (Functor m, MonadCatchIO m)
+              => Address
+              -> [String]
+              -> TQueue Event
+              -> m ()
+connectServer addr tags queue = connect addr $ do
+    logPeerTX $ "sending subscription for " ++ show tags
 
-        sender <- forkContextFinally
-            (forever $ liftIO (atomically $ readTQueue queue) >>= send)
-            finish
+    send . Subscription "graphite" (Just "Graphite Handler")
+         . Seq.fromList
+         $ map fromString tags
 
-        continue `finally` liftIO (killThread health >> killThread sender)
+    child <- forkContextFinally
+        (forever $ liftIO (atomically $ readTQueue queue) >>= send)
+        finish
+
+    continue `finally` liftIO (killThread child)
   where
-    subscribe = send
-        . Subscription "graphite" (Just "Graphite Handler")
-        . Seq.fromList
-        . map fromString
-
     continue = receive yield
 
-    yield (E evt) = logPeerRX (show $ E.tags evt) >> continue
+    yield (E evt) = do
+        logPeerRX (show $ E.tags evt)
+        liftIO . atomically $ writeTQueue queue evt
+        continue
+
     yield Syn     = logPeerRX "SYN" >> send Ack >> logPeerTX "ACK" >> continue
     yield _       = logPeerRX "FIN"
+
+connectGraphite :: MonadCatchIO m
+                => Address
+                -> TQueue Event
+                -> m ()
+connectGraphite _addr queue = liftIO . forever $
+    atomically (readTQueue queue) >>= forward
+  where
+    forward evt = mapM_ (print . line) $ E.metrics evt
+      where
+        line M.Metric{..} = k <> " " <> v <> " " <> t
+          where
+            k = BS.intercalate "." $ map utf8ToBS [E.host evt, E.key evt, key]
+            v = BS.pack $ printf "%.8f" value
+            t = BS.pack $ show time
+
+        -- FIXME: Take type into account
+        -- FIXME: Safely escape full keys

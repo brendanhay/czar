@@ -128,6 +128,7 @@ connectServer addr queue = connect addr $ do
     child <- forkContextFinally
        (forever $ liftIO (atomically $ readTQueue queue) >>= send)
        finish
+
     keepalive `finally` liftIO (killThread child)
   where
     keepalive = receive syn
