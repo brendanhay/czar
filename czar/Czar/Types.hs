@@ -26,7 +26,6 @@ module Czar.Types
 import           Control.Applicative
 import           Control.Error
 import           Czar.Internal.Protocol.Threshold
-import           Data.Configurator.Types
 import           Data.Hashable
 import           Data.String
 import           Network.Socket
@@ -42,10 +41,6 @@ newtype Seconds = Seconds Int deriving (Eq, Ord, Num)
 
 instance Show Seconds where
     show (Seconds n) = show n
-
-instance Configured Seconds where
-    convert (Number n) = Just . Seconds $ ceiling (fromRational n :: Double)
-    convert _          = Nothing
 
 parseSeconds :: String -> Either String Seconds
 parseSeconds = fmap fromInteger . parseInteger

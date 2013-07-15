@@ -54,7 +54,7 @@ library
         async
       , base                      >= 4 && < 5
       , bytestring
-      , configurator
+      , bouquet
       , containers
       , directory
       , ekg
@@ -158,7 +158,6 @@ executable czar-graphite
 
     build-depends:
         base                      >= 4 && < 5
-      , bouquet
       , bytestring
       , containers
       , czar

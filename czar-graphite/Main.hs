@@ -35,7 +35,6 @@ import qualified Data.ByteString.Char8               as BS
 import           Data.Foldable
 import           Data.Monoid
 import qualified Data.Sequence                       as Seq
-import           Network.Bouquet
 import           Prelude                             hiding (mapM_)
 import           Text.Printf
 
