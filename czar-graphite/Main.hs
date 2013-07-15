@@ -101,16 +101,15 @@ connectGraphite :: MonadCatchIO m
                 => Address
                 -> TQueue Event
                 -> m ()
-connectGraphite _addr queue = liftIO . forever $
-    atomically (readTQueue queue) >>= forward
+connectGraphite _addr queue = liftIO . forever $ do
+    E.Event{..} <- atomically (readTQueue queue)
+    mapM_ (print . line host key) metrics
   where
-    forward evt = mapM_ (print . line) $ E.metrics evt
+    line host pre M.Metric{..} = k <> " " <> v <> " " <> t
       where
-        line M.Metric{..} = k <> " " <> v <> " " <> t
-          where
-            k = BS.intercalate "." $ map utf8ToBS [E.host evt, E.key evt, key]
-            v = BS.pack $ printf "%.8f" value
-            t = BS.pack $ show time
+        k = BS.intercalate "." $ map utf8ToBS [host, pre, key]
+        v = BS.pack $ printf "%.8f" value
+        t = BS.pack $ show time
 
         -- FIXME: Take type into account
         -- FIXME: Safely escape full keys
