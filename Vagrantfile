@@ -3,7 +3,6 @@ Vagrant.configure('2') do |config|
   config.vm.box     = 'raring-server'
 
   config.ssh.forward_agent = true
-  config.berkshelf.enabled = false
 
   config.vm.provision :shell, :inline => $bootstrap
 
