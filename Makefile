@@ -2,7 +2,7 @@ DEPS := vendor/ekg \
  vendor/options \
  vendor/pool \
  vendor/bouquet \
- czar/src/Czar/Internal/Protocol.hs
+ czar/Czar/Internal/Protocol.hs
 
 BINS := bin/server \
  bin/agent \
@@ -35,7 +35,7 @@ vendor/pool:
 vendor/%:
 	git clone git@github.com:brendanhay/$*.git $@
 
-czar/src/Czar/Internal/Protocol.hs: lib/czar.proto
+czar/Czar/Internal/Protocol.hs: lib/czar.proto
 	hprotoc -I lib -p Czar.Internal -d czar -v $<
 
 bin/%: bin

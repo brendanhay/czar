@@ -50,14 +50,16 @@ module Czar.Socket
     ) where
 
 import           Control.Concurrent
-import           Control.Concurrent.Timeout       (Timeout)
-import qualified Control.Concurrent.Timeout       as Timeout
+import           Control.Concurrent.Timeout     (Timeout)
+import qualified Control.Concurrent.Timeout     as Timeout
+import           Control.Error
 import           Control.Monad.CatchIO
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
 import           Czar.Log
 import           Czar.Protocol
 import           Czar.Types
+import           Network.Bouquet
 import qualified Network.Socket                 as Sock hiding (recv)
 import           Network.Socket                 hiding (listen, connect, accept, send, close, socket)
 import qualified Network.Socket.ByteString.Lazy as Sock
@@ -94,17 +96,44 @@ listen (Address addr) ctx = bracket open cleanup accept
             (runReaderT (runCtx ctx) child)
             (const $ close child)
 
-connect :: MonadCatchIO m => Address -> Context m a -> m a
-connect (Address addr) ctx = bracket open close $ runReaderT action
+-- FIXME: make number of retries parameterised
+connect :: (MonadCatchIO m, Exception e) => Address -> Context IO a -> m (Either e a)
+connect addr ctx = runBouquet (BouquetConf [addr] acquire release 30)
+    $ retry 12
+    $ latencyAware
+    $ runReaderT (runCtx (logPeerTX "connected") >> runCtx ctx)
   where
-    open = liftIO $ do
-        sock <- Sock.socket (family addr) Stream Sock.defaultProtocol
-
-        Sock.connect sock addr
-
+    acquire (Address addr') = liftIO $ do
+        sock <- Sock.socket (family addr') Stream Sock.defaultProtocol
+        Sock.connect sock addr'
         return sock
 
-    action = runCtx (logPeerTX "connected") >> runCtx ctx
+    release = Sock.close
+
+--connect :: MonadCatchIO m => Address -> Context m a -> m a
+-- connect (Address addr) ctx = bracket open close $ runReaderT action
+--   where
+--     open = liftIO $ do
+--         sock <- Sock.socket (family addr) Stream Sock.defaultProtocol
+
+--         Sock.connect sock addr
+
+--         return sock
+
+--     action = runCtx (logPeerTX "connected") >> runCtx ctx
+
+
+
+-- connect (Address addr) ctx = bracket open close $ runReaderT action
+--   where
+--     open = liftIO $ do
+--         sock <- Sock.socket (family addr) Stream Sock.defaultProtocol
+
+--         Sock.connect sock addr
+
+--         return sock
+
+--     action = runCtx (logPeerTX "connected") >> runCtx ctx
 
 receive :: MonadCatchIO m => (Payload -> Context m a) -> Context m a
 receive action = do
